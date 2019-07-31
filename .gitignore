@@ -1,2 +1,5 @@
 /target
 **/*.rs.bk
+env.sh
+env.zsh
+env.fish

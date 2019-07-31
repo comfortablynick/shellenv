@@ -1,7 +1,7 @@
+#![allow(dead_code)]
 use serde::Deserialize;
 use std::fs::OpenOptions;
 use std::io::Read;
-use toml::Value;
 
 #[derive(Deserialize, Debug)]
 struct Config {
@@ -13,15 +13,28 @@ struct Config {
 
 #[derive(Deserialize, Debug)]
 struct Var {
-    key: Option<String>,
-    val: Option<String>,
+    key: String,
+    val: String,
     desc: Option<String>,
     args: Option<String>,
     cat: Option<String>,
-    quote: Option<bool>,
-    eval: Option<bool>,
-    shell_eval: Option<bool>,
+    #[serde(default)]
+    quote: bool,
+    #[serde(default)]
+    eval: bool,
+    #[serde(default)]
+    shell_eval: bool,
     shell: Option<Vec<String>>,
+}
+
+impl Var {
+    /// Quote val if Var.quote == true
+    fn stringify_val(&self) -> String {
+        if self.quote {
+            return format!("{:?}", self.val);
+        }
+        self.val.clone()
+    }
 }
 
 fn main() {
@@ -33,8 +46,17 @@ fn main() {
         .read_to_string(&mut buf)
         .unwrap();
 
-    let value = buf.parse::<Value>().unwrap();
-    println!("{:#?}", value);
     let vals: Config = toml::from_str(&buf).unwrap();
-    println!("{:#?}", vals);
+    let quote_if = |quote: bool| if quote { "\"" } else { "" };
+    for p in vals.path {
+        println!("export PATH={}:$PATH", p.val);
+    }
+    for e in vals.env {
+        println!(
+            "export {}={q}{}{q}",
+            e.key,
+            e.val.escape_debug(),
+            q = quote_if(e.quote)
+        );
+    }
 }
