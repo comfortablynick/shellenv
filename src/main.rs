@@ -1,17 +1,19 @@
 #![allow(dead_code)]
+#![allow(unused_imports)]
+use crate::cli::Cli;
 use serde::Deserialize;
-use std::fs::OpenOptions;
-use std::io::Read;
+use std::{fmt, fs::OpenOptions, io::Read};
 
 #[derive(Deserialize, Debug)]
 struct Config {
-    path: Vec<Var>,
-    env: Vec<Var>,
-    abbr: Vec<Var>,
+    path:  Vec<Var>,
+    env:   Vec<Var>,
+    abbr:  Vec<Var>,
     alias: Vec<Var>,
 }
 
 #[derive(Deserialize, Debug)]
+/// Container for variable contents
 struct Var {
     key: String,
     val: String,
@@ -27,6 +29,12 @@ struct Var {
     shell: Option<Vec<String>>,
 }
 
+impl fmt::Display for Var {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}={}", self.key, self.val)
+    }
+}
+
 impl Var {
     /// Quote val if Var.quote == true
     fn stringify_val(&self) -> String {
@@ -37,12 +45,14 @@ impl Var {
     }
 }
 
-fn main() {
+fn run() -> Result<(), std::io::Error> {
+    let cli = cli::parse_args()?;
+
     let mut buf = String::new();
     let _file = OpenOptions::new()
         .read(true)
-        .open("/home/nick/git/shellenv/src/env.toml")
-        .unwrap()
+        .open(&cli.toml_file)
+        .unwrap_or_else(|_| panic!("cannot find file path: {:?}", cli.toml_file))
         .read_to_string(&mut buf)
         .unwrap();
 
@@ -58,5 +68,45 @@ fn main() {
             e.val.escape_debug(),
             q = quote_if(e.quote)
         );
+    }
+    Ok(())
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{}", e);
+    }
+}
+
+mod cli {
+    use clap::{
+        app_from_crate, crate_authors, crate_description, crate_name, crate_version, value_t,
+        values_t, AppSettings, ArgSettings,
+    };
+    type App = clap::App<'static>;
+    type Arg = clap::Arg<'static>;
+
+    #[derive(Debug, Default, Clone)]
+    pub struct Cli {
+        pub toml_file: std::path::PathBuf,
+    }
+
+    pub fn parse_args() -> Result<Cli, std::io::Error> {
+        let app = app_from_crate!()
+            .setting(AppSettings::DontCollapseArgsInUsage)
+            .setting(AppSettings::VersionlessSubcommands)
+            .setting(AppSettings::DeriveDisplayOrder)
+            .setting(AppSettings::AllArgsOverrideSelf)
+            .setting(AppSettings::UnifiedHelpMessage)
+            .arg(
+                Arg::with_name("file")
+                    .settings(&[ArgSettings::TakesValue, ArgSettings::Required])
+                    .env("SHELLENV_FILE"),
+            )
+            .get_matches();
+        let mut cli: Cli = Default::default();
+
+        cli.toml_file = value_t!(app, "file", std::path::PathBuf).unwrap();
+        Ok(cli)
     }
 }

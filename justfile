@@ -6,7 +6,6 @@ alias r := run
 alias b := build
 alias i := install
 alias h := help
-alias q := runq
 
 # build release binary
 build:
@@ -24,13 +23,12 @@ install:
 
 # build release binary and run
 run:
-	#!/usr/bin/env bash
-	[[ {{dev}} -eq "1" ]] && export RUST_BACKTRACE=1
-	cargo run --release #sh
-
-# run with --quiet
-runq:
-	./target/release/{{bin_name}} -q
+    #!/usr/bin/env bash
+    if [[ {{dev}} -eq "1" ]]; then
+        export RUST_BACKTRACE=1
+        export SHELLENV_FILE="$PWD/src/env.toml"
+    fi
+    cargo run --release #sh
 
 help:
 	./target/release/{{bin_name}} -h
