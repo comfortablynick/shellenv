@@ -3,7 +3,7 @@
 use crate::cli::Cli;
 use log::*;
 use serde::Deserialize;
-use std::{fmt, fs::OpenOptions, io::Read};
+use std::{default::Default, fmt, fs::OpenOptions, io::Read};
 
 #[derive(Debug)]
 enum VarType {
@@ -43,13 +43,36 @@ struct Var {
 impl fmt::Display for Var {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let quote_if = |quote: bool| if quote { "\"" } else { "" };
-        write!(
-            f,
-            "export {}={q}{}{q}",
-            self.key,
-            self.val.escape_debug(),
-            q = quote_if(self.quote)
-        )
+        match &self.var_type {
+            Some(VarType::Path) => write!(
+                f,
+                "export PATH={q}{}{q}:$PATH",
+                self.val.escape_debug(),
+                q = quote_if(self.quote)
+            ),
+            Some(VarType::Env) => write!(
+                f,
+                "export {}={q}{}{q}",
+                self.key,
+                self.val.escape_debug(),
+                q = quote_if(self.quote)
+            ),
+            Some(VarType::Abbr) => write!(
+                f,
+                "alias {}={q}{}{q}",
+                self.key,
+                self.val.escape_debug(),
+                q = quote_if(self.quote)
+            ),
+            Some(VarType::Alias) => write!(
+                f,
+                "alias {}={q}{}{q}",
+                self.key,
+                self.val.escape_debug(),
+                q = quote_if(self.quote)
+            ),
+            None => panic!("invalid var_type `{:?}`", self.var_type),
+        }
     }
 }
 
@@ -62,6 +85,25 @@ impl Var {
         self.val.clone()
     }
 }
+
+// Vars :: Newtype container for collection of Var {{{
+// #[derive(Debug, Default)]
+// struct Vars(Vec<Var>);
+//
+// impl fmt::Display for Vars {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}", self)
+//     }
+// }
+//
+// impl IntoIterator for Vars {
+//     type IntoIter = ::std::vec::IntoIter<Self::Item>;
+//     type Item = Var;
+//
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.0.into_iter()
+//     }
+// } }}}
 
 fn main() -> Result<(), std::io::Error> {
     let cli = cli::parse_args()?;
@@ -76,7 +118,8 @@ fn main() -> Result<(), std::io::Error> {
         .read_to_string(&mut buf)
         .unwrap();
     let vals: Config = toml::from_str(&buf).unwrap();
-    let mut vars: Vec<Var> = vec![];
+    // let mut vars: Vars = Default::default();
+    let mut vars: Vec<Var> = Default::default();
 
     for mut p in vals.path {
         p.var_type = Some(VarType::Path);
@@ -106,30 +149,100 @@ mod cli {
         app_from_crate, crate_authors, crate_description, crate_name, crate_version, value_t,
         values_t, AppSettings, ArgSettings,
     };
+    use std::{
+        env, fmt,
+        path::{Path, PathBuf},
+        str::FromStr,
+    };
+
     type App = clap::App<'static>;
     type Arg = clap::Arg<'static>;
 
     #[derive(Debug, Default, Clone)]
     pub struct Cli {
-        pub toml_file: std::path::PathBuf,
+        /// Location of toml file to parse (required)
+        pub toml_file: PathBuf,
+        /// Shell to parse env for (use current shell if not supplied)
+        pub shell: Option<Shell>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Shell {
+        Bash,
+        Zsh,
+        Fish,
+    }
+
+    impl FromStr for Shell {
+        type Err = std::io::Error;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            match s {
+                "bash" => Ok(Self::Bash),
+                "zsh" => Ok(Self::Zsh),
+                "fish" => Ok(Self::Fish),
+                _ => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+            }
+        }
+    }
+
+    impl fmt::Display for Shell {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match *self {
+                Shell::Bash => write!(f, "bash"),
+                Shell::Zsh => write!(f, "zsh"),
+                Shell::Fish => write!(f, "fish"),
+            }
+        }
     }
 
     pub fn parse_args() -> Result<Cli, std::io::Error> {
+        // let shell = || {
+        //     let shell = env::var("SHELL").expect("error getting $SHELL");
+        //     PathBuf::from(shell).file_name()
+        // };
         let app = app_from_crate!()
             .setting(AppSettings::DontCollapseArgsInUsage)
-            .setting(AppSettings::VersionlessSubcommands)
             .setting(AppSettings::DeriveDisplayOrder)
             .setting(AppSettings::AllArgsOverrideSelf)
-            .setting(AppSettings::UnifiedHelpMessage)
+            .max_term_width(80)
+            .arg(
+                Arg::with_name("shell")
+                    .settings(&[ArgSettings::MultipleValues, ArgSettings::HidePossibleValues])
+                    .long("shell")
+                    .short('s')
+                    .help("Process environment for shell(s)")
+                    .possible_values(&["bash", "zsh", "fish"]),
+            )
             .arg(
                 Arg::with_name("file")
                     .settings(&[ArgSettings::TakesValue, ArgSettings::Required])
+                    .help("TOML file to parse for environment")
                     .env("SHELLENV_FILE"),
             )
             .get_matches();
         let mut cli: Cli = Default::default();
 
-        cli.toml_file = value_t!(app, "file", std::path::PathBuf).unwrap();
+        cli.toml_file = value_t!(app, "file", PathBuf).unwrap();
+        cli.shell = match app.value_of("shell") {
+            Some(s) => Some(match s {
+                "bash" => Shell::Bash,
+                "zsh" => Shell::Zsh,
+                "fish" => Shell::Fish,
+                _ => panic!("{} is not a valid shell!", s),
+            }),
+            // None => Some(Shell::Bash),
+            None => {
+                let shell = env::var("SHELL").expect("error getting $SHELL");
+                Shell::from_str(
+                    PathBuf::from(shell)
+                        .file_name()
+                        .map(|s| s.to_str().unwrap())
+                        .unwrap(),
+                )
+                .ok()
+            }
+        };
         Ok(cli)
     }
 }
