@@ -223,18 +223,40 @@ mod cli {
             .setting(AppSettings::DeriveDisplayOrder)
             .setting(AppSettings::AllArgsOverrideSelf)
             .max_term_width(80)
+            .after_help(
+                "\
+Environment variables:
+    SHELLENV_FILE
+            Used for <file>",
+            )
             .arg(
                 Arg::with_name("shell")
                     .settings(&[ArgSettings::MultipleValues, ArgSettings::HidePossibleValues])
                     .long("shell")
                     .short('s')
                     .help("Process environment for shell(s)")
+                    .long_help(
+                        "\
+Process environment for shell(s). Output will be in file with the proper extension for the shell.
+
+Possible values are \"bash\", \"zsh\", \"fish\".",
+                    )
                     .possible_values(&["bash", "zsh", "fish"]),
             )
             .arg(
                 Arg::with_name("file")
-                    .settings(&[ArgSettings::TakesValue, ArgSettings::Required])
+                    .settings(&[
+                        ArgSettings::TakesValue,
+                        ArgSettings::Required,
+                        ArgSettings::HideEnvValues,
+                    ])
                     .help("TOML file to parse for environment")
+                    .long_help(
+                        "\
+TOML file to parse for the environment.
+
+The settings inside the toml file with dictate how the variables are processed for each shell.",
+                    )
                     .env("SHELLENV_FILE"),
             )
             .get_matches();
