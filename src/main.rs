@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
+#![feature(option_flattening)]
 use crate::cli::Cli;
 use log::*;
 use serde::Deserialize;
@@ -173,6 +174,25 @@ mod cli {
         Fish,
     }
 
+    impl Shell {
+        /// Get from last element of $SHELL.
+        ///
+        /// Example: SHELL=/usr/bin/zsh => Some(Shell::Zsh)
+        pub fn from_env() -> Option<Self> {
+            if let Ok(shell) = env::var("SHELL") {
+                Shell::from_str(
+                    PathBuf::from(shell)
+                        .file_name()
+                        .map(|s| s.to_str())
+                        .flatten()
+                        .unwrap(),
+                )
+                .ok();
+            }
+            None
+        }
+    }
+
     impl FromStr for Shell {
         type Err = std::io::Error;
 
@@ -196,11 +216,8 @@ mod cli {
         }
     }
 
+    /// Parse cli arguments and return Cli struct with validated options
     pub fn parse_args() -> Result<Cli, std::io::Error> {
-        // let shell = || {
-        //     let shell = env::var("SHELL").expect("error getting $SHELL");
-        //     PathBuf::from(shell).file_name()
-        // };
         let app = app_from_crate!()
             .setting(AppSettings::DontCollapseArgsInUsage)
             .setting(AppSettings::DeriveDisplayOrder)
@@ -223,25 +240,11 @@ mod cli {
             .get_matches();
         let mut cli: Cli = Default::default();
 
+        // process cli values
         cli.toml_file = value_t!(app, "file", PathBuf).unwrap();
         cli.shell = match app.value_of("shell") {
-            Some(s) => Some(match s {
-                "bash" => Shell::Bash,
-                "zsh" => Shell::Zsh,
-                "fish" => Shell::Fish,
-                _ => panic!("{} is not a valid shell!", s),
-            }),
-            // None => Some(Shell::Bash),
-            None => {
-                let shell = env::var("SHELL").expect("error getting $SHELL");
-                Shell::from_str(
-                    PathBuf::from(shell)
-                        .file_name()
-                        .map(|s| s.to_str().unwrap())
-                        .unwrap(),
-                )
-                .ok()
-            }
+            Some(s) => Shell::from_str(s).ok(),
+            None => Shell::from_env(),
         };
         Ok(cli)
     }
