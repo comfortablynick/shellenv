@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 use crate::cli::Cli;
+use log::*;
 use serde::Deserialize;
 use std::{fmt, fs::OpenOptions, io::Read};
 
@@ -64,6 +65,8 @@ impl Var {
 
 fn main() -> Result<(), std::io::Error> {
     let cli = cli::parse_args()?;
+    env_logger::init();
+    info!("{:?}", cli);
 
     let mut buf = String::new();
     let _file = OpenOptions::new()
@@ -72,7 +75,6 @@ fn main() -> Result<(), std::io::Error> {
         .unwrap_or_else(|_| panic!("cannot find file path: {:?}", cli.toml_file))
         .read_to_string(&mut buf)
         .unwrap();
-
     let vals: Config = toml::from_str(&buf).unwrap();
     let mut vars: Vec<Var> = vec![];
 
