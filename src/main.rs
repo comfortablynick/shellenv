@@ -4,6 +4,14 @@ use crate::cli::Cli;
 use serde::Deserialize;
 use std::{fmt, fs::OpenOptions, io::Read};
 
+#[derive(Debug)]
+enum VarType {
+    Path,
+    Env,
+    Abbr,
+    Alias,
+}
+
 #[derive(Deserialize, Debug)]
 struct Config {
     path:  Vec<Var>,
@@ -15,6 +23,8 @@ struct Config {
 #[derive(Deserialize, Debug)]
 /// Container for variable contents
 struct Var {
+    #[serde(skip_deserializing)]
+    var_type: Option<VarType>,
     key: String,
     val: String,
     desc: Option<String>,
@@ -31,7 +41,14 @@ struct Var {
 
 impl fmt::Display for Var {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}={}", self.key, self.val)
+        let quote_if = |quote: bool| if quote { "\"" } else { "" };
+        write!(
+            f,
+            "export {}={q}{}{q}",
+            self.key,
+            self.val.escape_debug(),
+            q = quote_if(self.quote)
+        )
     }
 }
 
@@ -45,7 +62,7 @@ impl Var {
     }
 }
 
-fn run() -> Result<(), std::io::Error> {
+fn main() -> Result<(), std::io::Error> {
     let cli = cli::parse_args()?;
 
     let mut buf = String::new();
@@ -57,25 +74,29 @@ fn run() -> Result<(), std::io::Error> {
         .unwrap();
 
     let vals: Config = toml::from_str(&buf).unwrap();
-    let quote_if = |quote: bool| if quote { "\"" } else { "" };
-    for p in vals.path {
-        println!("export PATH={}:$PATH", p.val);
+    let mut vars: Vec<Var> = vec![];
+
+    for mut p in vals.path {
+        p.var_type = Some(VarType::Path);
+        vars.push(p);
     }
-    for e in vals.env {
-        println!(
-            "export {}={q}{}{q}",
-            e.key,
-            e.val.escape_debug(),
-            q = quote_if(e.quote)
-        );
+    for mut e in vals.env {
+        e.var_type = Some(VarType::Env);
+        vars.push(e);
+    }
+    for mut a in vals.abbr {
+        a.var_type = Some(VarType::Abbr);
+        vars.push(a);
+    }
+    for mut a in vals.alias {
+        a.var_type = Some(VarType::Alias);
+        vars.push(a);
+    }
+
+    for var in vars {
+        println!("{}", var);
     }
     Ok(())
-}
-
-fn main() {
-    if let Err(e) = run() {
-        eprintln!("{}", e);
-    }
 }
 
 mod cli {
