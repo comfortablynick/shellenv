@@ -72,7 +72,7 @@ struct Config {
     alias: Vec<Var>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 /// Container for variable contents
 struct Var {
     #[serde(skip_deserializing)]
@@ -130,6 +130,22 @@ impl fmt::Display for Var {
             ),
             None => panic!("invalid var_type `{:?}`", self.var_type),
         }
+    }
+}
+
+impl fmt::Debug for Var {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "{}{}\n{:?}",
+            if let Some(d) = &self.desc {
+                format!("# {}\n", d)
+            } else {
+                String::new()
+            },
+            self,
+            self.shell,
+        )
     }
 }
 
@@ -196,7 +212,7 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     for var in vars {
-        println!("{} {:?}", var, var.shell);
+        println!("{:?}", var);
     }
     Ok(())
 }
