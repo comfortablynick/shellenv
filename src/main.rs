@@ -4,7 +4,57 @@
 use crate::cli::Cli;
 use log::*;
 use serde::Deserialize;
-use std::{default::Default, fmt, fs::OpenOptions, io::Read};
+use std::{default::Default, env, fmt, fs::OpenOptions, io::Read, path::PathBuf, str::FromStr};
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Shell {
+    Bash,
+    Zsh,
+    Fish,
+}
+
+impl Shell {
+    /// Get from last element of $SHELL.
+    ///
+    /// Example: SHELL=/usr/bin/zsh => Some(Shell::Zsh)
+    pub fn from_env() -> Option<Self> {
+        if let Ok(shell) = env::var("SHELL") {
+            Shell::from_str(
+                PathBuf::from(shell)
+                    .file_name()
+                    .map(|s| s.to_str())
+                    .flatten()
+                    .unwrap(),
+            )
+            .ok();
+        }
+        None
+    }
+}
+
+impl FromStr for Shell {
+    type Err = std::io::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "bash" => Ok(Self::Bash),
+            "zsh" => Ok(Self::Zsh),
+            "fish" => Ok(Self::Fish),
+            _ => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+        }
+    }
+}
+
+impl fmt::Display for Shell {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            Shell::Bash => write!(f, "bash"),
+            Shell::Zsh => write!(f, "zsh"),
+            Shell::Fish => write!(f, "fish"),
+        }
+    }
+}
 
 #[derive(Debug)]
 enum VarType {
@@ -38,7 +88,13 @@ struct Var {
     eval: bool,
     #[serde(default)]
     shell_eval: bool,
-    shell: Option<Vec<String>>,
+    #[serde(default = "default_shell")]
+    shell: Vec<Shell>,
+}
+
+/// Shell value used when not present (all shells)
+fn default_shell() -> Vec<Shell> {
+    vec![Shell::Bash, Shell::Zsh, Shell::Fish]
 }
 
 impl fmt::Display for Var {
@@ -140,18 +196,18 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     for var in vars {
-        println!("{}", var);
+        println!("{} {:?}", var, var.shell);
     }
     Ok(())
 }
 
 mod cli {
+    use crate::Shell;
     use clap::{
         app_from_crate, crate_authors, crate_description, crate_name, crate_version, value_t,
         values_t, AppSettings, ArgSettings,
     };
     use std::{
-        env, fmt,
         path::{Path, PathBuf},
         str::FromStr,
     };
@@ -165,55 +221,6 @@ mod cli {
         pub toml_file: PathBuf,
         /// Shell to parse env for (use current shell if not supplied)
         pub shell: Option<Shell>,
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum Shell {
-        Bash,
-        Zsh,
-        Fish,
-    }
-
-    impl Shell {
-        /// Get from last element of $SHELL.
-        ///
-        /// Example: SHELL=/usr/bin/zsh => Some(Shell::Zsh)
-        pub fn from_env() -> Option<Self> {
-            if let Ok(shell) = env::var("SHELL") {
-                Shell::from_str(
-                    PathBuf::from(shell)
-                        .file_name()
-                        .map(|s| s.to_str())
-                        .flatten()
-                        .unwrap(),
-                )
-                .ok();
-            }
-            None
-        }
-    }
-
-    impl FromStr for Shell {
-        type Err = std::io::Error;
-
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            match s {
-                "bash" => Ok(Self::Bash),
-                "zsh" => Ok(Self::Zsh),
-                "fish" => Ok(Self::Fish),
-                _ => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
-            }
-        }
-    }
-
-    impl fmt::Display for Shell {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match *self {
-                Shell::Bash => write!(f, "bash"),
-                Shell::Zsh => write!(f, "zsh"),
-                Shell::Fish => write!(f, "fish"),
-            }
-        }
     }
 
     /// Parse cli arguments and return Cli struct with validated options
