@@ -4,7 +4,15 @@
 use crate::cli::Cli;
 use log::*;
 use serde::Deserialize;
-use std::{default::Default, env, fmt, fs::OpenOptions, io::Read, path::PathBuf, str::FromStr};
+use std::{
+    default::Default,
+    env,
+    fmt::{self, Write},
+    fs::OpenOptions,
+    io::Read,
+    path::PathBuf,
+    str::FromStr,
+};
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -222,9 +230,11 @@ fn main() -> Result<(), std::io::Error> {
         vars.push(a);
     }
 
+    let mut buf = String::new();
     for var in vars {
-        println!("{:?}", var);
+        writeln!(buf, "{:?}", var).unwrap();
     }
+    print!("{}", buf);
     Ok(())
 }
 
