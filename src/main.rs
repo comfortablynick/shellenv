@@ -157,6 +157,17 @@ impl Var {
         }
         self.val.clone()
     }
+
+    /// Output in fish format
+    fn fish_string(&self) -> String {
+        match self.var_type {
+            Some(VarType::Alias) => format!("{}", self),
+            Some(VarType::Path) => format!("{}", self),
+            Some(VarType::Env) => format!("{}", self),
+            Some(VarType::Abbr) => format!("{}", self),
+            None => String::new(),
+        }
+    }
 }
 
 // Vars :: Newtype container for collection of Var {{{
