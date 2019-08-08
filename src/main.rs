@@ -7,14 +7,14 @@ use serde::Deserialize;
 use std::{
     default::Default,
     env,
-    fmt::{self, Write},
+    fmt::{self, Write as WriteFmt},
     fs::OpenOptions,
-    io::Read,
+    io::{self, Read, Write},
     path::PathBuf,
     str::FromStr,
 };
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Shell {
     Bash,
@@ -28,7 +28,7 @@ impl Shell {
     /// Example: SHELL=/usr/bin/zsh => Some(Shell::Zsh)
     pub fn from_env() -> Option<Self> {
         if let Ok(shell) = env::var("SHELL") {
-            Shell::from_str(
+            return Shell::from_str(
                 PathBuf::from(shell)
                     .file_name()
                     .map(|s| s.to_str())
@@ -64,7 +64,7 @@ impl fmt::Display for Shell {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum VarType {
     Path,
     Env,
@@ -111,6 +111,7 @@ fn quote_if(quote: bool, s: &str) -> String {
 }
 
 impl fmt::Display for Var {
+    /// Display based on POSIX format
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let quote_if = |quote: bool| if quote { "\"" } else { "" };
         match &self.var_type {
@@ -172,7 +173,7 @@ impl Var {
     }
 
     /// Output in fish format
-    fn fish_string(&self) -> String {
+    fn to_fish_fmt(&self) -> String {
         match self.var_type {
             Some(VarType::Alias) => format!("{}", self),
             Some(VarType::Path) => format!(
@@ -188,6 +189,16 @@ impl Var {
             }
             None => String::new(),
         }
+    }
+
+    /// Output in bash/zsh format
+    fn to_posix_fmt(&self) -> String {
+        // if let Some(var_type) = self.var_type {
+        //     match var_type {
+        //         VarType::Alias => format!("{}", self)
+        //     }
+        // }
+        format!("{}", self)
     }
 }
 
@@ -213,7 +224,6 @@ impl Var {
 fn main() -> Result<(), std::io::Error> {
     let cli = cli::parse_args()?;
     env_logger::init();
-    info!("{:?}", cli);
 
     let mut buf = String::new();
     let _file = OpenOptions::new()
@@ -244,13 +254,24 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     let mut buf = String::new();
-    for var in vars {
-        match cli.shell {
-            Some(Shell::Fish) => writeln!(buf, "{}", var.fish_string()).unwrap(),
-            _ => writeln!(buf, "{:?}", var).unwrap(),
+    if let Some(sh) = &cli.shell {
+        for var in &vars {
+            if var.shell.contains(sh) {
+                match sh {
+                    Shell::Fish => writeln!(buf, "{}", var.to_fish_fmt()).unwrap(),
+                    _ => writeln!(buf, "{}", var.to_posix_fmt()).unwrap(),
+                }
+            }
+        }
+        io::stdout().write_all(buf.as_bytes())?;
+    }
+    // Debug info
+    info!("{:#?}", cli);
+    if log::max_level() == log::Level::Trace {
+        for var in &vars {
+            writeln!(buf, "{:?}", var).unwrap();
         }
     }
-    print!("{}", buf);
     Ok(())
 }
 
