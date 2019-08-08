@@ -105,6 +105,11 @@ fn default_shell() -> Vec<Shell> {
     vec![Shell::Bash, Shell::Zsh, Shell::Fish]
 }
 
+/// Add escaped quotes if necessary
+fn quote_if(quote: bool, s: &str) -> String {
+    format!("{q}{}{q}", s, q = if quote { "\"" } else { "" })
+}
+
 impl fmt::Display for Var {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let quote_if = |quote: bool| if quote { "\"" } else { "" };
@@ -170,9 +175,17 @@ impl Var {
     fn fish_string(&self) -> String {
         match self.var_type {
             Some(VarType::Alias) => format!("{}", self),
-            Some(VarType::Path) => format!("{}", self),
-            Some(VarType::Env) => format!("{}", self),
-            Some(VarType::Abbr) => format!("{}", self),
+            Some(VarType::Path) => format!(
+                "set -g {} fish_user_paths {}",
+                self.args.clone().unwrap_or_else(String::new),
+                quote_if(self.quote, &self.val)
+            ),
+            Some(VarType::Env) => {
+                format!("set -gx {} {}", self.key, quote_if(self.quote, &self.val))
+            }
+            Some(VarType::Abbr) => {
+                format!("abbr -g {} {}", self.key, quote_if(self.quote, &self.val))
+            }
             None => String::new(),
         }
     }
@@ -232,7 +245,10 @@ fn main() -> Result<(), std::io::Error> {
 
     let mut buf = String::new();
     for var in vars {
-        writeln!(buf, "{:?}", var).unwrap();
+        match cli.shell {
+            Some(Shell::Fish) => writeln!(buf, "{}", var.fish_string()).unwrap(),
+            _ => writeln!(buf, "{:?}", var).unwrap(),
+        }
     }
     print!("{}", buf);
     Ok(())
