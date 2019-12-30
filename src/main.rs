@@ -1,8 +1,5 @@
-#![allow(dead_code)]
-#![allow(unused_imports)]
-#![feature(option_flattening)]
-use crate::cli::Cli;
-use log::*;
+use anyhow::Context;
+use anyhow::Result;
 use serde::Deserialize;
 use std::{
     default::Default,
@@ -32,8 +29,7 @@ impl Shell {
                 PathBuf::from(shell)
                     .file_name()
                     .map(|s| s.to_str())
-                    .flatten()
-                    .unwrap(),
+                    .flatten()?,
             )
             .ok();
         }
@@ -74,12 +70,13 @@ enum VarType {
 
 #[derive(Deserialize, Debug)]
 struct Config {
-    path:  Vec<Var>,
-    env:   Vec<Var>,
-    abbr:  Vec<Var>,
+    path: Vec<Var>,
+    env: Vec<Var>,
+    abbr: Vec<Var>,
     alias: Vec<Var>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 /// Container for variable contents
 struct Var {
@@ -164,6 +161,7 @@ impl fmt::Debug for Var {
 }
 
 impl Var {
+    #[allow(dead_code)]
     /// Quote val if Var.quote == true
     fn stringify_val(&self) -> String {
         if self.quote {
@@ -175,7 +173,10 @@ impl Var {
     /// Output in fish format
     fn to_fish_fmt(&self) -> String {
         match self.var_type {
-            Some(VarType::Alias) => format!("{}", self),
+            Some(VarType::Alias) => format!(
+                "function {}; {} $argv; end; funcsave {}",
+                self.key, self.val, self.key
+            ),
             Some(VarType::Path) => format!(
                 "set -g {} fish_user_paths {}",
                 self.args.clone().unwrap_or_else(String::new),
@@ -193,11 +194,6 @@ impl Var {
 
     /// Output in bash/zsh format
     fn to_posix_fmt(&self) -> String {
-        // if let Some(var_type) = self.var_type {
-        //     match var_type {
-        //         VarType::Alias => format!("{}", self)
-        //     }
-        // }
         format!("{}", self)
     }
 }
@@ -221,7 +217,7 @@ impl Var {
 //     }
 // } }}}
 
-fn main() -> Result<(), std::io::Error> {
+fn main() -> Result<()> {
     let cli = cli::parse_args()?;
     env_logger::init();
 
@@ -229,11 +225,9 @@ fn main() -> Result<(), std::io::Error> {
     let _file = OpenOptions::new()
         .read(true)
         .open(&cli.toml_file)
-        .unwrap_or_else(|_| panic!("cannot find file path: {:?}", cli.toml_file))
-        .read_to_string(&mut buf)
-        .unwrap();
-    let vals: Config = toml::from_str(&buf).unwrap();
-    // let mut vars: Vars = Default::default();
+        .context(format!("Could not find file {:?}", cli.toml_file))?
+        .read_to_string(&mut buf)?;
+    let vals: Config = toml::from_str(&buf)?;
     let mut vars: Vec<Var> = Default::default();
 
     for mut p in vals.path {
@@ -258,18 +252,18 @@ fn main() -> Result<(), std::io::Error> {
         for var in &vars {
             if var.shell.contains(sh) {
                 match sh {
-                    Shell::Fish => writeln!(buf, "{}", var.to_fish_fmt()).unwrap(),
-                    _ => writeln!(buf, "{}", var.to_posix_fmt()).unwrap(),
+                    Shell::Fish => writeln!(buf, "{}", var.to_fish_fmt())?,
+                    _ => writeln!(buf, "{}", var.to_posix_fmt())?,
                 }
             }
         }
         io::stdout().write_all(buf.as_bytes())?;
     }
     // Debug info
-    info!("{:#?}", cli);
+    log::debug!("{:#?}", cli);
     if log::max_level() == log::Level::Trace {
         for var in &vars {
-            writeln!(buf, "{:?}", var).unwrap();
+            writeln!(buf, "{:?}", var)?;
         }
     }
     Ok(())
@@ -277,14 +271,12 @@ fn main() -> Result<(), std::io::Error> {
 
 mod cli {
     use crate::Shell;
+    use anyhow::Result;
     use clap::{
-        app_from_crate, crate_authors, crate_description, crate_name, crate_version, value_t,
-        values_t, AppSettings, ArgSettings,
+        crate_authors, crate_description, crate_name, crate_version, value_t, AppSettings,
+        ArgSettings,
     };
-    use std::{
-        path::{Path, PathBuf},
-        str::FromStr,
-    };
+    use std::{path::PathBuf, str::FromStr};
 
     type App = clap::App<'static>;
     type Arg = clap::Arg<'static>;
@@ -298,8 +290,11 @@ mod cli {
     }
 
     /// Parse cli arguments and return Cli struct with validated options
-    pub fn parse_args() -> Result<Cli, std::io::Error> {
-        let app = app_from_crate!()
+    pub fn parse_args() -> Result<Cli> {
+        let app = App::new(crate_name!())
+            .version(crate_version!())
+            .author(crate_authors!())
+            .about(crate_description!())
             .setting(AppSettings::DontCollapseArgsInUsage)
             .setting(AppSettings::DeriveDisplayOrder)
             .setting(AppSettings::AllArgsOverrideSelf)
@@ -344,7 +339,7 @@ The settings inside the toml file with dictate how the variables are processed f
         let mut cli: Cli = Default::default();
 
         // process cli values
-        cli.toml_file = value_t!(app, "file", PathBuf).unwrap();
+        cli.toml_file = value_t!(app, "file", PathBuf)?;
         cli.shell = match app.value_of("shell") {
             Some(s) => Shell::from_str(s).ok(),
             None => Shell::from_env(),
