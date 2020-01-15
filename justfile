@@ -14,10 +14,10 @@ build:
 # build release binary ONLY during dev; otherwise install
 install:
     #!/usr/bin/env bash
-    if [[ {{dev}} -eq "1" ]]; then
+    if [[ ${DEV:-{{dev}}} -eq "1" ]]; then
         cargo run --release
     else
-        cargo install -f
+        cargo install -f --path .
     fi #
 
 # build release binary and run
