@@ -1,6 +1,7 @@
 mod cli;
-use anyhow::Context;
-use anyhow::Result;
+use anyhow::{Context, Result};
+use clap::Clap;
+use log::debug;
 use serde::Deserialize;
 use std::{
     default::Default,
@@ -12,7 +13,7 @@ use std::{
     str::FromStr,
 };
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Clap, Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Shell {
     Bash,
@@ -35,6 +36,12 @@ impl Shell {
             .ok();
         }
         None
+    }
+}
+
+impl Default for Shell {
+    fn default() -> Self {
+        Shell::from_env().expect("Could not determine shell.")
     }
 }
 
@@ -200,16 +207,19 @@ impl Var {
 }
 
 fn main() -> Result<()> {
-    let cli = cli::parse_args()?;
+    let cli = cli::Cli::parse();
     env_logger::init();
 
-    let mut buf = String::new();
-    let _file = OpenOptions::new()
-        .read(true)
-        .open(&cli.toml_file)
-        .context(format!("Could not find file {:?}", cli.toml_file))?
-        .read_to_string(&mut buf)?;
-    let vals: Config = toml::from_str(&buf)?;
+    let file = (|| -> Result<_> {
+        let mut buf = String::new();
+        OpenOptions::new()
+            .read(true)
+            .open(&cli.toml_file)
+            .with_context(|| format!("Could not find file {:?}", cli.toml_file))?
+            .read_to_string(&mut buf)?;
+        Ok(buf)
+    })()?;
+    let vals: Config = toml::from_str(&file)?;
     let mut vars: Vec<Var> = Default::default();
 
     for mut p in vals.path {
@@ -230,19 +240,18 @@ fn main() -> Result<()> {
     }
 
     let mut buf = String::new();
-    if let Some(sh) = &cli.shell {
-        for var in &vars {
-            if var.shell.contains(sh) {
-                match sh {
-                    Shell::Fish => writeln!(buf, "{}", var.to_fish_fmt())?,
-                    _ => writeln!(buf, "{}", var.to_posix_fmt())?,
-                }
+    for var in &vars {
+        if var.shell.contains(&cli.shell) {
+            match &cli.shell {
+                Shell::Fish => writeln!(buf, "{}", var.to_fish_fmt())?,
+                _ => writeln!(buf, "{}", var.to_posix_fmt())?,
             }
         }
-        io::stdout().write_all(buf.as_bytes())?;
     }
+    io::stdout().write_all(buf.as_bytes())?;
+
     // Debug info
-    log::debug!("{:#?}", cli);
+    debug!("{:#?}", cli);
     if log::max_level() == log::Level::Trace {
         for var in &vars {
             writeln!(buf, "{:?}", var)?;

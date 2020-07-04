@@ -1,0 +1,29 @@
+# vim: set fenc=utf-8 ft=dosini:
+
+[project-build:release]
+command=cargo build --release
+cwd=<root>
+output=terminal
+errorformat=%f:%l:%m
+save=1
+
+[project-build:debug]
+command=cargo build
+cwd=<root>
+output=terminal
+errorformat=%f:%l:%m
+save=1
+
+[project-run:release]
+command=cargo run --release
+cwd=<root>
+output=terminal
+errorformat=%f:%l:%m
+save=1
+
+[project-run:debug]
+command=cargo run
+cwd=<root>
+output=terminal
+errorformat=%f:%l:%m
+save=1
