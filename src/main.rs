@@ -119,35 +119,38 @@ impl fmt::Display for Var {
     /// Display based on POSIX format
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let quote_if = |quote: bool| if quote { "\"" } else { "" };
-        match &self.var_type {
-            Some(VarType::Path) => write!(
-                f,
-                "export PATH={q}{}{q}:$PATH",
-                self.val.escape_debug(),
-                q = quote_if(self.quote)
-            ),
-            Some(VarType::Env) => write!(
-                f,
-                "export {}={q}{}{q}",
-                self.key,
-                self.val.escape_debug(),
-                q = quote_if(self.quote)
-            ),
-            Some(VarType::Abbr) => write!(
-                f,
-                "alias {}={q}{}{q}",
-                self.key,
-                self.val.escape_debug(),
-                q = quote_if(self.quote)
-            ),
-            Some(VarType::Alias) => write!(
-                f,
-                "alias {}={q}{}{q}",
-                self.key,
-                self.val.escape_debug(),
-                q = quote_if(self.quote)
-            ),
-            None => panic!("invalid var_type `{:?}`", self.var_type),
+        if let Some(var_t) = &self.var_type.as_ref() {
+            match var_t {
+                VarType::Path => write!(
+                    f,
+                    "export PATH={q}{}{q}:$PATH",
+                    self.val.escape_debug(),
+                    q = quote_if(self.quote)
+                ),
+                VarType::Env => write!(
+                    f,
+                    "export {}={q}{}{q}",
+                    self.key,
+                    self.val.escape_debug(),
+                    q = quote_if(self.quote)
+                ),
+                VarType::Abbr => write!(
+                    f,
+                    "alias {}={q}{}{q}",
+                    self.key,
+                    self.val.escape_debug(),
+                    q = quote_if(self.quote)
+                ),
+                VarType::Alias => write!(
+                    f,
+                    "alias {}={q}{}{q}",
+                    self.key,
+                    self.val.escape_debug(),
+                    q = quote_if(self.quote)
+                ),
+            }
+        } else {
+            panic!("Invalid variable type: {:#?}", &self.var_type)
         }
     }
 }
@@ -171,12 +174,12 @@ impl fmt::Debug for Var {
 impl Var {
     #[allow(dead_code)]
     /// Quote val if Var.quote == true
-    fn stringify_val(&self) -> String {
-        if self.quote {
-            return format!("{:?}", self.val);
-        }
-        self.val.clone()
-    }
+    // fn stringify_val(&self) -> String {
+    //     if self.quote {
+    //         return format!("{:?}", self.val);
+    //     }
+    //     self.val.clone()
+    // }
 
     /// Output in fish format
     fn to_fish_fmt(&self) -> String {
