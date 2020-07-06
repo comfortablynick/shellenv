@@ -1,9 +1,10 @@
 mod cli;
 use anyhow::{Context, Result};
 use clap::Clap;
-use log::debug;
+use log::{debug, log_enabled, trace};
 use serde::Deserialize;
 use std::{
+    borrow::Cow,
     default::Default,
     env,
     fmt::{self, Write as WriteFmt},
@@ -27,7 +28,7 @@ impl Shell {
     /// Example: SHELL=/usr/bin/zsh => Some(Shell::Zsh)
     pub fn from_env() -> Option<Self> {
         if let Ok(shell) = env::var("SHELL") {
-            return Shell::from_str(
+            return Self::from_str(
                 PathBuf::from(shell)
                     .file_name()
                     .map(|s| s.to_str())
@@ -77,23 +78,27 @@ enum VarType {
 }
 
 #[derive(Deserialize, Debug)]
-struct Config {
-    path: Vec<Var>,
-    env: Vec<Var>,
-    abbr: Vec<Var>,
-    alias: Vec<Var>,
+struct Config<'a> {
+    #[serde(borrow)]
+    path: Vec<Var<'a>>,
+    #[serde(borrow)]
+    env: Vec<Var<'a>>,
+    #[serde(borrow)]
+    abbr: Vec<Var<'a>>,
+    #[serde(borrow)]
+    alias: Vec<Var<'a>>,
 }
 
 #[allow(dead_code)]
 #[derive(Deserialize)]
 /// Container for variable contents
-struct Var {
+struct Var<'a> {
     #[serde(skip_deserializing)]
     var_type: Option<VarType>,
-    key: String,
-    val: String,
-    desc: Option<String>,
-    args: Option<String>,
+    key: &'a str,
+    val: Cow<'a, str>,
+    desc: Option<&'a str>,
+    args: Option<&'a str>,
     cat: Option<String>,
     #[serde(default)]
     quote: bool,
@@ -115,7 +120,7 @@ fn quote_if(quote: bool, s: &str) -> String {
     format!("{q}{}{q}", s, q = if quote { "\"" } else { "" })
 }
 
-impl fmt::Display for Var {
+impl fmt::Display for Var<'_> {
     /// Display based on POSIX format
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let quote_if = |quote: bool| if quote { "\"" } else { "" };
@@ -155,7 +160,7 @@ impl fmt::Display for Var {
     }
 }
 
-impl fmt::Debug for Var {
+impl fmt::Debug for Var<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
@@ -171,35 +176,27 @@ impl fmt::Debug for Var {
     }
 }
 
-impl Var {
-    #[allow(dead_code)]
-    /// Quote val if Var.quote == true
-    // fn stringify_val(&self) -> String {
-    //     if self.quote {
-    //         return format!("{:?}", self.val);
-    //     }
-    //     self.val.clone()
-    // }
-
+impl Var<'_> {
     /// Output in fish format
     fn to_fish_fmt(&self) -> String {
-        match self.var_type {
-            Some(VarType::Alias) => format!(
-                "function {}; {} $argv; end; funcsave {}",
-                self.key, self.val, self.key
-            ),
-            Some(VarType::Path) => format!(
-                "set -g {} fish_user_paths {}",
-                self.args.clone().unwrap_or_else(String::new),
-                quote_if(self.quote, &self.val)
-            ),
-            Some(VarType::Env) => {
-                format!("set -gx {} {}", self.key, quote_if(self.quote, &self.val))
+        if let Some(var_t) = &self.var_type.as_ref() {
+            match var_t {
+                VarType::Alias => format!(
+                    "function {}; {} $argv; end; funcsave {}",
+                    self.key, self.val, self.key
+                ),
+                VarType::Path => format!(
+                    "set -g {} fish_user_paths {}",
+                    self.args.unwrap_or_default(),
+                    quote_if(self.quote, &self.val)
+                ),
+                VarType::Env => format!("set -gx {} {}", self.key, quote_if(self.quote, &self.val)),
+                VarType::Abbr => {
+                    format!("abbr -g {} {}", self.key, quote_if(self.quote, &self.val))
+                }
             }
-            Some(VarType::Abbr) => {
-                format!("abbr -g {} {}", self.key, quote_if(self.quote, &self.val))
-            }
-            None => String::new(),
+        } else {
+            panic!("Invalid variable type: {:#?}", &self.var_type);
         }
     }
 
@@ -255,10 +252,12 @@ fn main() -> Result<()> {
 
     // Debug info
     debug!("{:#?}", cli);
-    if log::max_level() == log::Level::Trace {
+    if log_enabled!(log::Level::Trace) {
+        let mut buf = String::new();
         for var in &vars {
             writeln!(buf, "{:?}", var)?;
         }
+        trace!("\n{}", buf);
     }
     Ok(())
 }
