@@ -17,9 +17,12 @@ use std::{
 #[derive(Clap, Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Shell {
+    #[clap(alias = "sh")]
     Bash,
     Zsh,
     Fish,
+    #[clap(alias = "ps", alias = "pwsh")]
+    Powershell,
 }
 
 impl Shell {
@@ -51,9 +54,10 @@ impl FromStr for Shell {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "bash" => Ok(Self::Bash),
+            "bash" | "sh" => Ok(Self::Bash),
             "zsh" => Ok(Self::Zsh),
             "fish" => Ok(Self::Fish),
+            "pwsh" | "ps" | "powershell" => Ok(Self::Powershell),
             _ => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
         }
     }
@@ -62,9 +66,10 @@ impl FromStr for Shell {
 impl fmt::Display for Shell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            Shell::Bash => write!(f, "bash"),
-            Shell::Zsh => write!(f, "zsh"),
-            Shell::Fish => write!(f, "fish"),
+            Shell::Bash => f.write_str("bash"),
+            Shell::Zsh => f.write_str("zsh"),
+            Shell::Fish => f.write_str("fish"),
+            Shell::Powershell => f.write_str("powershell"),
         }
     }
 }
@@ -99,7 +104,7 @@ struct Var<'a> {
     val: Cow<'a, str>,
     desc: Option<&'a str>,
     args: Option<&'a str>,
-    cat: Option<String>,
+    cat: Option<&'a str>,
     #[serde(default)]
     quote: bool,
     #[serde(default)]
@@ -112,47 +117,27 @@ struct Var<'a> {
 
 /// Shell value used when not present (all shells)
 fn default_shell() -> Vec<Shell> {
-    vec![Shell::Bash, Shell::Zsh, Shell::Fish]
+    vec![Shell::Bash, Shell::Zsh, Shell::Fish, Shell::Powershell]
 }
 
 /// Add escaped quotes if necessary
-fn quote_if(quote: bool, s: &str) -> String {
-    format!("{q}{}{q}", s, q = if quote { "\"" } else { "" })
-}
+// fn quote_if(quote: bool, s: &str) -> String {
+//     format!("{q}{}{q}", s, q = if quote { "\"" } else { "" })
+// }
 
 impl fmt::Display for Var<'_> {
     /// Display based on POSIX format
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let quote_if = |quote: bool| if quote { "\"" } else { "" };
-        if let Some(var_t) = &self.var_type.as_ref() {
+        if let Some(var_t) = &self.var_type {
+            let val = if self.quote {
+                format!("{:?}", self.val)
+            } else {
+                format!("{}", self.val)
+            };
             match var_t {
-                VarType::Path => write!(
-                    f,
-                    "export PATH={q}{}{q}:$PATH",
-                    self.val.escape_debug(),
-                    q = quote_if(self.quote)
-                ),
-                VarType::Env => write!(
-                    f,
-                    "export {}={q}{}{q}",
-                    self.key,
-                    self.val.escape_debug(),
-                    q = quote_if(self.quote)
-                ),
-                VarType::Abbr => write!(
-                    f,
-                    "alias {}={q}{}{q}",
-                    self.key,
-                    self.val.escape_debug(),
-                    q = quote_if(self.quote)
-                ),
-                VarType::Alias => write!(
-                    f,
-                    "alias {}={q}{}{q}",
-                    self.key,
-                    self.val.escape_debug(),
-                    q = quote_if(self.quote)
-                ),
+                VarType::Path => write!(f, "export PATH={}:$PATH", val),
+                VarType::Env => write!(f, "export {}={}", self.key, val),
+                VarType::Abbr | VarType::Alias => write!(f, "alias {}={}", self.key, val),
             }
         } else {
             panic!("Invalid variable type: {:#?}", &self.var_type)
@@ -179,7 +164,12 @@ impl fmt::Debug for Var<'_> {
 impl Var<'_> {
     /// Output in fish format
     fn to_fish_fmt(&self) -> String {
-        if let Some(var_t) = &self.var_type.as_ref() {
+        if let Some(var_t) = &self.var_type {
+            let val = if self.quote {
+                format!("{:?}", self.val)
+            } else {
+                format!("{}", self.val)
+            };
             match var_t {
                 VarType::Alias => format!(
                     "function {}; {} $argv; end; funcsave {}",
@@ -188,12 +178,30 @@ impl Var<'_> {
                 VarType::Path => format!(
                     "set -g {} fish_user_paths {}",
                     self.args.unwrap_or_default(),
-                    quote_if(self.quote, &self.val)
+                    val
                 ),
-                VarType::Env => format!("set -gx {} {}", self.key, quote_if(self.quote, &self.val)),
-                VarType::Abbr => {
-                    format!("abbr -g {} {}", self.key, quote_if(self.quote, &self.val))
+                VarType::Env => format!("set -gx {} {}", self.key, val),
+                VarType::Abbr => format!("abbr -g {} {}", self.key, val),
+            }
+        } else {
+            panic!("Invalid variable type: {:#?}", &self.var_type);
+        }
+    }
+
+    /// Output in powershell format
+    fn to_powershell_fmt(&self) -> String {
+        if let Some(var_t) = &self.var_type {
+            match var_t {
+                VarType::Alias | VarType::Abbr => {
+                    let var = if self.quote {
+                        format!("{:?}", self.val)
+                    } else {
+                        format!("{}", self.val)
+                    };
+                    format!("function {} {{ {} }}", self.key, var)
                 }
+                VarType::Path => format!("$Env:Path = {:?}", format!("{}:$Env:Path", self.val)),
+                VarType::Env => format!("$Env:{} = {:?}", self.key, self.val),
             }
         } else {
             panic!("Invalid variable type: {:#?}", &self.var_type);
@@ -239,13 +247,15 @@ fn main() -> Result<()> {
         vars.push(a);
     }
 
-    let mut buf = String::new();
+    let mut buf = String::with_capacity(4000);
     for var in &vars {
         if var.shell.contains(&cli.shell) {
             match &cli.shell {
-                Shell::Fish => writeln!(buf, "{}", var.to_fish_fmt())?,
-                _ => writeln!(buf, "{}", var.to_posix_fmt())?,
+                Shell::Fish => buf.push_str(&var.to_fish_fmt()),
+                Shell::Powershell => buf.push_str(&var.to_powershell_fmt()),
+                _ => buf.push_str(&var.to_posix_fmt()),
             }
+            buf.push('\n');
         }
     }
     io::stdout().write_all(buf.as_bytes())?;

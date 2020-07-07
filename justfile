@@ -21,8 +21,8 @@ install:
     fi #
 
 # build release binary and run
-run:
-    cargo run --release #
+run +args='':
+    cargo run --release -- {{args}}
 
 help:
     ./target/release/{{bin_name}} -h
@@ -30,6 +30,15 @@ help:
 # run release binary
 rb +args='':
     ./target/release/{{bin_name}} {{args}}
+
+runsh:
+    cargo run --release -- -s sh | bat -l sh
+
+runps:
+    cargo run --release -- -s ps | bat -l powershell
+
+runfish:
+    cargo run --release -- -s ps | bat -l fish
 
 test:
     cargo test
