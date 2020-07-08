@@ -31,14 +31,29 @@ help:
 rb +args='':
     ./target/release/{{bin_name}} {{args}}
 
+# run for (ba)sh
 runsh:
+    cargo run --release -- -s sh
+
+# run for powershell
+runps:
+    cargo run --release -- -s ps
+
+# run for fish
+runfish:
+    cargo run --release -- -s fish
+
+# run for (ba)sh & output to bat
+runshc:
     cargo run --release -- -s sh | bat -l sh
 
-runps:
+# run for powershell & output to bat
+runpsc:
     cargo run --release -- -s ps | bat -l powershell
 
-runfish:
-    cargo run --release -- -s ps | bat -l fish
+# run for fish & output to bat
+runfishc:
+    cargo run --release -- -s fish | bat -l fish
 
 test:
     cargo test

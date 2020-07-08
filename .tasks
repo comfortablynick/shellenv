@@ -1,29 +1,81 @@
-# vim: set fenc=utf-8 ft=dosini:
+; vim:set fenc=utf-8 ft=dosini:
+; written with just2tasks: Wed Jul  8 08:23:11 2020
 
-[project-build:release]
-command=cargo build --release
+[build]
+command=just build
 cwd=<root>
 output=terminal
-errorformat=%f:%l:%m
 save=1
 
-[project-build:debug]
-command=cargo build
+[fix]
+command=just fix
 cwd=<root>
 output=terminal
-errorformat=%f:%l:%m
 save=1
 
-[project-run:release]
-command=cargo run --release
+[help]
+command=just help
 cwd=<root>
 output=terminal
-errorformat=%f:%l:%m
 save=1
 
-[project-run:debug]
-command=cargo run
+[install]
+command=just install
 cwd=<root>
 output=terminal
-errorformat=%f:%l:%m
 save=1
+
+[rb]
+command=just rb
+cwd=<root>
+output=terminal
+save=1
+
+[run]
+command=just run
+cwd=<root>
+output=terminal
+save=1
+
+[runfish]
+command=just runfish
+cwd=<root>
+output=terminal
+save=1
+
+[runfishc]
+command=just runfishc
+cwd=<root>
+output=terminal
+save=1
+
+[runps]
+command=just runps
+cwd=<root>
+output=terminal
+save=1
+
+[runpsc]
+command=just runpsc
+cwd=<root>
+output=terminal
+save=1
+
+[runsh]
+command=just runsh
+cwd=<root>
+output=terminal
+save=1
+
+[runshc]
+command=just runshc
+cwd=<root>
+output=terminal
+save=1
+
+[test]
+command=just test
+cwd=<root>
+output=terminal
+save=1
+

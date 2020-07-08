@@ -17,8 +17,8 @@ pub struct Cli {
     #[clap(short, long, arg_enum, default_value)]
     pub shell: Shell,
     ///Increase logging output to console
-    #[clap(short, long, parse(from_occurrences))]
-    pub verbose: u8,
+    #[clap(short, long = "verbose", parse(from_occurrences))]
+    pub verbosity: u8,
 }
 
 #[cfg(test)]

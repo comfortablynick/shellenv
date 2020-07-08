@@ -1,7 +1,8 @@
 mod cli;
+mod logger;
 use anyhow::{Context, Result};
 use clap::Clap;
-use log::{debug, log_enabled, trace};
+use log::{debug, info, log_enabled};
 use serde::Deserialize;
 use std::{
     borrow::Cow,
@@ -121,19 +122,19 @@ fn default_shell() -> Vec<Shell> {
 }
 
 /// Add escaped quotes if necessary
-// fn quote_if(quote: bool, s: &str) -> String {
-//     format!("{q}{}{q}", s, q = if quote { "\"" } else { "" })
-// }
+fn quote_if(quote: bool, s: &str) -> String {
+    return if quote {
+        format!("{:?}", s)
+    } else {
+        String::from(s)
+    };
+}
 
 impl fmt::Display for Var<'_> {
     /// Display based on POSIX format
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(var_t) = &self.var_type {
-            let val = if self.quote {
-                format!("{:?}", self.val)
-            } else {
-                format!("{}", self.val)
-            };
+            let val = quote_if(self.quote, &self.val);
             match var_t {
                 VarType::Path => write!(f, "export PATH={}:$PATH", val),
                 VarType::Env => write!(f, "export {}={}", self.key, val),
@@ -193,12 +194,7 @@ impl Var<'_> {
         if let Some(var_t) = &self.var_type {
             match var_t {
                 VarType::Alias | VarType::Abbr => {
-                    let var = if self.quote {
-                        format!("{:?}", self.val)
-                    } else {
-                        format!("{}", self.val)
-                    };
-                    format!("function {} {{ {} }}", self.key, var)
+                    format!("function {} {{ {} }}", self.key, self.val)
                 }
                 VarType::Path => format!("$Env:Path = {:?}", format!("{}:$Env:Path", self.val)),
                 VarType::Env => format!("$Env:{} = {:?}", self.key, self.val),
@@ -216,7 +212,7 @@ impl Var<'_> {
 
 fn main() -> Result<()> {
     let cli = cli::Cli::parse();
-    env_logger::init();
+    logger::init_logger(cli.verbosity);
 
     let file = (|| -> Result<_> {
         let mut buf = String::new();
@@ -261,13 +257,13 @@ fn main() -> Result<()> {
     io::stdout().write_all(buf.as_bytes())?;
 
     // Debug info
-    debug!("{:#?}", cli);
-    if log_enabled!(log::Level::Trace) {
+    info!("{:#?}", cli);
+    if log_enabled!(log::Level::Debug) {
         let mut buf = String::new();
         for var in &vars {
             writeln!(buf, "{:?}", var)?;
         }
-        trace!("\n{}", buf);
+        debug!("\n{}", buf);
     }
     Ok(())
 }
