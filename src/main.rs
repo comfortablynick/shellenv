@@ -2,13 +2,13 @@ mod cli;
 mod logger;
 use anyhow::{Context, Result};
 use clap::Clap;
+use lazy_format::lazy_format;
 use log::{debug, info, log_enabled};
 use serde::Deserialize;
 use std::{
     borrow::Cow,
     default::Default,
-    env,
-    fmt::{self, Write as WriteFmt},
+    env, fmt,
     fs::OpenOptions,
     io::{self, Read, Write},
     path::PathBuf,
@@ -86,11 +86,11 @@ enum VarType {
 #[derive(Deserialize, Debug)]
 struct Config<'a> {
     #[serde(borrow)]
-    path: Vec<Var<'a>>,
+    path:  Vec<Var<'a>>,
     #[serde(borrow)]
-    env: Vec<Var<'a>>,
+    env:   Vec<Var<'a>>,
     #[serde(borrow)]
-    abbr: Vec<Var<'a>>,
+    abbr:  Vec<Var<'a>>,
     #[serde(borrow)]
     alias: Vec<Var<'a>>,
 }
@@ -100,20 +100,21 @@ struct Config<'a> {
 /// Container for variable contents
 struct Var<'a> {
     #[serde(skip_deserializing)]
-    var_type: Option<VarType>,
-    key: &'a str,
-    val: Cow<'a, str>,
-    desc: Option<&'a str>,
-    args: Option<&'a str>,
-    cat: Option<&'a str>,
+    var_type:   Option<VarType>,
     #[serde(default)]
-    quote: bool,
+    key:        &'a str,
+    val:        Cow<'a, str>,
+    desc:       Option<&'a str>,
+    args:       Option<&'a str>,
+    cat:        Option<&'a str>,
     #[serde(default)]
-    eval: bool,
+    quote:      bool,
+    #[serde(default)]
+    eval:       bool,
     #[serde(default)]
     shell_eval: bool,
     #[serde(default = "default_shell")]
-    shell: Vec<Shell>,
+    shell:      Vec<Shell>,
 }
 
 /// Shell value used when not present (all shells)
@@ -121,7 +122,7 @@ fn default_shell() -> Vec<Shell> {
     vec![Shell::Bash, Shell::Zsh, Shell::Fish, Shell::Powershell]
 }
 
-/// Add escaped quotes if necessary
+/// Add escaped quotes `quote` is true, else return owned string.
 fn quote_if(quote: bool, s: &str) -> String {
     return if quote {
         format!("{:?}", s)
@@ -135,6 +136,7 @@ impl fmt::Display for Var<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(var_t) = &self.var_type {
             let val = quote_if(self.quote, &self.val);
+            // TODO: use match inside lazy_format
             match var_t {
                 VarType::Path => write!(f, "export PATH={}:$PATH", val),
                 VarType::Env => write!(f, "export {}={}", self.key, val),
@@ -166,24 +168,22 @@ impl Var<'_> {
     /// Output in fish format
     fn to_fish_fmt(&self) -> String {
         if let Some(var_t) = &self.var_type {
-            let val = if self.quote {
-                format!("{:?}", self.val)
-            } else {
-                format!("{}", self.val)
-            };
-            match var_t {
-                VarType::Alias => format!(
-                    "function {}; {} $argv; end; funcsave {}",
-                    self.key, self.val, self.key
+            let val = quote_if(self.quote, &self.val);
+            lazy_format!(match (var_t) {
+                VarType::Alias => (
+                    "function {k}; {} $argv; end; funcsave {k}",
+                    self.val,
+                    k = self.key,
                 ),
-                VarType::Path => format!(
+                VarType::Path => (
                     "set -g {} fish_user_paths {}",
                     self.args.unwrap_or_default(),
                     val
                 ),
-                VarType::Env => format!("set -gx {} {}", self.key, val),
-                VarType::Abbr => format!("abbr -g {} {}", self.key, val),
-            }
+                VarType::Env => ("set -gx {} {}", self.key, self.val),
+                VarType::Abbr => ("abbr -g {} {}", self.key, val),
+            })
+            .to_string()
         } else {
             panic!("Invalid variable type: {:#?}", &self.var_type);
         }
@@ -259,11 +259,11 @@ fn main() -> Result<()> {
     // Debug info
     info!("{:#?}", cli);
     if log_enabled!(log::Level::Debug) {
-        let mut buf = String::new();
-        for var in &vars {
-            writeln!(buf, "{:?}", var)?;
+        // let buf = lazy_format!(("{:?}\n", v) for v in &vars).to_string();
+        // debug!("\n{}", buf);
+        for v in &vars {
+            debug!("\n{:?}", v);
         }
-        debug!("\n{}", buf);
     }
     Ok(())
 }

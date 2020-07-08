@@ -1,0 +1,4 @@
+#&use asdf
+$env:PATH = "./target/release:$env:PATH"
+$env:SHELLENV_FILE = "$pwd/src/env.toml"
+$env:RUST_LOG = "shellenv=info"
