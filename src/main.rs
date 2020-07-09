@@ -3,12 +3,13 @@ mod logger;
 use anyhow::{Context, Result};
 use clap::Clap;
 use lazy_format::lazy_format;
-use log::{debug, info, log_enabled};
+use log::{debug, info};
 use serde::Deserialize;
 use std::{
     borrow::Cow,
     default::Default,
-    env, fmt,
+    env,
+    fmt::{self, Debug, Display},
     fs::OpenOptions,
     io::{self, Read, Write},
     path::PathBuf,
@@ -64,7 +65,7 @@ impl FromStr for Shell {
     }
 }
 
-impl fmt::Display for Shell {
+impl Display for Shell {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Shell::Bash => f.write_str("bash"),
@@ -83,16 +84,29 @@ enum VarType {
     Alias,
 }
 
+impl Default for VarType {
+    fn default() -> Self {
+        VarType::Env
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct Config<'a> {
-    #[serde(borrow)]
+    #[serde(borrow, default)]
     path:  Vec<Var<'a>>,
-    #[serde(borrow)]
+    #[serde(borrow, default)]
     env:   Vec<Var<'a>>,
-    #[serde(borrow)]
+    #[serde(borrow, default)]
     abbr:  Vec<Var<'a>>,
-    #[serde(borrow)]
+    #[serde(borrow, default)]
     alias: Vec<Var<'a>>,
+}
+
+impl Config<'_> {
+    /// Get count of all vecs in the struct
+    fn item_ct(&self) -> usize {
+        &self.path.len() + &self.env.len() + &self.abbr.len() + &self.alias.len()
+    }
 }
 
 #[allow(dead_code)]
@@ -100,7 +114,7 @@ struct Config<'a> {
 /// Container for variable contents
 struct Var<'a> {
     #[serde(skip_deserializing)]
-    var_type:   Option<VarType>,
+    var_type:   VarType,
     #[serde(default)]
     key:        &'a str,
     val:        Cow<'a, str>,
@@ -125,30 +139,29 @@ fn default_shell() -> Vec<Shell> {
 /// Add escaped quotes `quote` is true, else return owned string.
 fn quote_if(quote: bool, s: &str) -> String {
     return if quote {
-        format!("{:?}", s)
+        format!("{:#?}", s)
     } else {
         String::from(s)
     };
 }
 
-impl fmt::Display for Var<'_> {
+impl Display for Var<'_> {
     /// Display based on POSIX format
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(var_t) = &self.var_type {
-            let val = quote_if(self.quote, &self.val);
-            // TODO: use match inside lazy_format
-            match var_t {
-                VarType::Path => write!(f, "export PATH={}:$PATH", val),
-                VarType::Env => write!(f, "export {}={}", self.key, val),
-                VarType::Abbr | VarType::Alias => write!(f, "alias {}={}", self.key, val),
-            }
-        } else {
-            panic!("Invalid variable type: {:#?}", &self.var_type)
-        }
+        let val = quote_if(self.quote, &self.val);
+        write!(
+            f,
+            "{}",
+            lazy_format!(match (self.var_type) {
+                VarType::Path => ("export PATH={}:$PATH", val),
+                VarType::Env => ("export {}={}", self.key, val),
+                VarType::Abbr | VarType::Alias => ("alias {}={}", self.key, val),
+            })
+        )
     }
 }
 
-impl fmt::Debug for Var<'_> {
+impl Debug for Var<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
@@ -167,40 +180,30 @@ impl fmt::Debug for Var<'_> {
 impl Var<'_> {
     /// Output in fish format
     fn to_fish_fmt(&self) -> String {
-        if let Some(var_t) = &self.var_type {
-            let val = quote_if(self.quote, &self.val);
-            lazy_format!(match (var_t) {
-                VarType::Alias => (
-                    "function {k}; {} $argv; end; funcsave {k}",
-                    self.val,
-                    k = self.key,
-                ),
-                VarType::Path => (
-                    "set -g {} fish_user_paths {}",
-                    self.args.unwrap_or_default(),
-                    val
-                ),
-                VarType::Env => ("set -gx {} {}", self.key, self.val),
-                VarType::Abbr => ("abbr -g {} {}", self.key, val),
-            })
-            .to_string()
-        } else {
-            panic!("Invalid variable type: {:#?}", &self.var_type);
-        }
+        let val = quote_if(self.quote, &self.val);
+        lazy_format!(match (self.var_type) {
+            VarType::Alias => (
+                "function {k}; {} $argv; end; funcsave {k}",
+                self.val,
+                k = self.key,
+            ),
+            VarType::Path => (
+                "set -g {} fish_user_paths {}",
+                self.args.unwrap_or_default(),
+                val
+            ),
+            VarType::Env => ("set -gx {} {}", self.key, self.val),
+            VarType::Abbr => ("abbr -g {} {}", self.key, val),
+        })
+        .to_string()
     }
 
     /// Output in powershell format
     fn to_powershell_fmt(&self) -> String {
-        if let Some(var_t) = &self.var_type {
-            match var_t {
-                VarType::Alias | VarType::Abbr => {
-                    format!("function {} {{ {} }}", self.key, self.val)
-                }
-                VarType::Path => format!("$Env:Path = {:?}", format!("{}:$Env:Path", self.val)),
-                VarType::Env => format!("$Env:{} = {:?}", self.key, self.val),
-            }
-        } else {
-            panic!("Invalid variable type: {:#?}", &self.var_type);
+        match self.var_type {
+            VarType::Alias | VarType::Abbr => format!("function {} {{ {} }}", self.key, self.val),
+            VarType::Path => format!("$Env:Path = {:?}", format!("{}:$Env:Path", self.val)),
+            VarType::Env => format!("$Env:{} = {:?}", self.key, self.val),
         }
     }
 
@@ -210,37 +213,43 @@ impl Var<'_> {
     }
 }
 
+/// Read file into string
+fn file_to_string<P: Into<PathBuf>>(path: P) -> Result<String>
+where
+    P: Debug + Copy,
+{
+    let mut buf = String::new();
+    OpenOptions::new()
+        .read(true)
+        .open(&path.into())
+        .with_context(|| format!("Could not find file {:?}", &path))?
+        .read_to_string(&mut buf)?;
+    Ok(buf)
+}
+
 fn main() -> Result<()> {
     let cli = cli::Cli::parse();
     logger::init_logger(cli.verbosity);
 
-    let file = (|| -> Result<_> {
-        let mut buf = String::new();
-        OpenOptions::new()
-            .read(true)
-            .open(&cli.toml_file)
-            .with_context(|| format!("Could not find file {:?}", cli.toml_file))?
-            .read_to_string(&mut buf)?;
-        Ok(buf)
-    })()?;
+    let file = file_to_string(&cli.toml_file)?;
     let vals: Config = toml::from_str(&file)?;
-    let mut vars: Vec<Var> = Default::default();
+    let mut vars: Vec<Var> = Vec::with_capacity(vals.item_ct());
 
-    for mut p in vals.path {
-        p.var_type = Some(VarType::Path);
-        vars.push(p);
+    for mut v in vals.path {
+        v.var_type = VarType::Path;
+        vars.push(v);
     }
-    for mut e in vals.env {
-        e.var_type = Some(VarType::Env);
-        vars.push(e);
+    for mut v in vals.env {
+        v.var_type = VarType::Env;
+        vars.push(v);
     }
-    for mut a in vals.abbr {
-        a.var_type = Some(VarType::Abbr);
-        vars.push(a);
+    for mut v in vals.abbr {
+        v.var_type = VarType::Abbr;
+        vars.push(v);
     }
-    for mut a in vals.alias {
-        a.var_type = Some(VarType::Alias);
-        vars.push(a);
+    for mut v in vals.alias {
+        v.var_type = VarType::Alias;
+        vars.push(v);
     }
 
     let mut buf = String::with_capacity(4000);
@@ -256,14 +265,7 @@ fn main() -> Result<()> {
     }
     io::stdout().write_all(buf.as_bytes())?;
 
-    // Debug info
     info!("{:#?}", cli);
-    if log_enabled!(log::Level::Debug) {
-        // let buf = lazy_format!(("{:?}\n", v) for v in &vars).to_string();
-        // debug!("\n{}", buf);
-        for v in &vars {
-            debug!("\n{:?}", v);
-        }
-    }
+    debug!("{:#?}", vars);
     Ok(())
 }
