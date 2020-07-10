@@ -1,9 +1,19 @@
+#[cfg(unix)]
+mod os {
+    pub const SHELL: [&str; 2] = ["sh", "-c"];
+}
+
+#[cfg(windows)]
+mod os {
+    pub const SHELL: [&str; 2] = ["cmd.exe", "/c"];
+}
+
 mod cli;
 mod logger;
 use anyhow::{Context, Result};
 use clap::Clap;
 use lazy_format::lazy_format;
-use log::{debug, info};
+use log::{debug, info, trace, warn};
 use serde::Deserialize;
 use std::{
     borrow::Cow,
@@ -110,30 +120,21 @@ impl Config<'_> {
     }
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 /// Container for variable contents
 struct Var<'a> {
     #[serde(skip_deserializing)]
-    var_type:   VarType,
+    var_type: VarType,
     #[serde(default)]
-    key:        &'a str,
-    val:        Cow<'a, str>,
-    desc:       Option<&'a str>,
-    args:       Option<&'a str>,
-    cat:        Option<&'a str>,
-    quote:      Option<bool>,
+    key:      &'a str,
+    val:      Cow<'a, str>,
+    desc:     Option<&'a str>,
+    args:     Option<&'a str>,
+    cat:      Option<&'a str>,
+    quote:    Option<bool>,
     #[serde(default)]
-    eval:       bool,
-    #[serde(default)]
-    shell_eval: bool,
-    #[serde(default = "default_shell")]
-    shell:      Vec<Shell>,
-}
-
-/// Shell value used when not present (all shells)
-fn default_shell() -> Vec<Shell> {
-    vec![Shell::Bash, Shell::Zsh, Shell::Fish, Shell::Powershell]
+    eval:     bool,
+    shell:    Option<Vec<Shell>>,
 }
 
 /// Quote `s` if `quote` is true or if there are spaces
@@ -159,9 +160,7 @@ impl Display for Var<'_> {
     /// Display based on POSIX format
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let val = if self.eval {
-            let cmd: Vec<&str> = self.val.as_ref().split_whitespace().collect();
-            let out = exec(&cmd).unwrap().stdout;
-            Cow::from(str::from_utf8(&out).unwrap())
+            shell_eval(self.val.as_ref()).expect(&format!("Eval failed on {:?}", self.val.as_ref()))
         } else {
             quote_if(self.val.as_ref(), self.quote)
         };
@@ -180,7 +179,11 @@ impl Display for Var<'_> {
 impl Var<'_> {
     /// Output in fish format
     fn to_fish_fmt(&self) -> String {
-        let val = quote_if(self.val.as_ref(), self.quote);
+        let val = if self.eval {
+            shell_eval(self.val.as_ref()).expect(&format!("Eval failed on {:?}", self.val.as_ref()))
+        } else {
+            quote_if(self.val.as_ref(), self.quote)
+        };
         lazy_format!(match (self.var_type) {
             VarType::Alias => (
                 "function {k}; {} $argv; end; funcsave {k}",
@@ -188,7 +191,7 @@ impl Var<'_> {
                 k = self.key,
             ),
             VarType::Path => (
-                "set -g {} fish_user_paths {}",
+                "set {} fish_user_paths {}",
                 self.args.unwrap_or_default(),
                 val
             ),
@@ -230,26 +233,44 @@ where
 
 /// Spawn subprocess for `cmd` and access stdout/stderr
 /// Fails if process output != 0
-fn exec(cmd: &[&str]) -> Result<Output> {
-    let command = Command::new(&cmd[0])
-        .args(cmd.get(1..).expect("missing args in cmd"))
+fn exec<I, T>(command: I) -> Result<Output>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<String>,
+{
+    let mut cmd = command.into_iter().map(Into::into);
+    let mut spawn = Command::new(cmd.next().expect("Command missing"));
+    while let Some(arg) = cmd.next() {
+        spawn.arg(arg);
+    }
+    let result = spawn
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
-    let result = command.wait_with_output()?;
+        .spawn()?
+        .wait_with_output()
+        .with_context(|| format!("Command failed: [{:?}]", spawn))?;
 
     if !result.status.success() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            str::from_utf8(&result.stderr)
-                .unwrap_or("cmd returned non-zero status")
-                .trim_end(),
-        ))
-        .with_context(|| format!("Command {:?}", cmd));
+        warn!("Command failed: [{:?}]; Result: {:?}", spawn, result);
+    } else {
+        debug!("Command: [{:?}]; Result: {:?}", spawn, result);
     }
     Ok(result)
 }
 
+fn shell_eval<'a, S>(cmd_str: S) -> Result<Cow<'a, str>>
+where
+    S: Into<Cow<'a, str>>,
+{
+    let cmd_str = cmd_str.into();
+    let mut shell_cmd = Vec::from(os::SHELL);
+    shell_cmd.push(cmd_str.as_ref());
+    let result = exec(shell_cmd)?;
+    let out = str::from_utf8(&result.stdout)?.trim_end().to_string();
+    Ok(Cow::from(out))
+}
+
+/// Parse toml file and output shell rc file
 fn main() -> Result<()> {
     let cli = cli::Cli::parse();
     logger::init_logger(cli.verbosity);
@@ -275,20 +296,27 @@ fn main() -> Result<()> {
         vars.push(v);
     }
 
-    let mut buf = String::with_capacity(4000);
+    let mut buf = String::with_capacity(8000);
     for var in &vars {
-        if var.shell.contains(&cli.shell) {
-            match &cli.shell {
-                Shell::Fish => buf.push_str(&var.to_fish_fmt()),
-                Shell::Powershell => buf.push_str(&var.to_powershell_fmt()),
-                _ => buf.push_str(&var.to_posix_fmt()),
+        if let Some(sh) = var.shell.clone() {
+            // If a value for var.shell has been supplied, make sure
+            // it includes the shell we're evaluating for
+            // `None` assumes compatibility with any shell
+            if !sh.contains(&cli.shell) {
+                debug!("Skipping {:?}", var);
+                continue;
             }
-            buf.push('\n');
         }
+        match &cli.shell {
+            Shell::Fish => buf.push_str(&var.to_fish_fmt().replace("$(", "(")),
+            Shell::Powershell => buf.push_str(&var.to_powershell_fmt()),
+            _ => buf.push_str(&var.to_posix_fmt()),
+        }
+        buf.push('\n');
     }
     io::stdout().write_all(buf.as_bytes())?;
 
     info!("{:#?}", cli);
-    debug!("{:#?}", vars);
+    trace!("{:#?}", vars);
     Ok(())
 }
