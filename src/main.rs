@@ -13,7 +13,8 @@ use std::{
     fs::OpenOptions,
     io::{self, Read, Write},
     path::PathBuf,
-    str::FromStr,
+    process::{Command, Output, Stdio},
+    str::{self, FromStr},
 };
 
 #[derive(Clap, Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -110,7 +111,7 @@ impl Config<'_> {
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 /// Container for variable contents
 struct Var<'a> {
     #[serde(skip_deserializing)]
@@ -121,8 +122,7 @@ struct Var<'a> {
     desc:       Option<&'a str>,
     args:       Option<&'a str>,
     cat:        Option<&'a str>,
-    #[serde(default)]
-    quote:      bool,
+    quote:      Option<bool>,
     #[serde(default)]
     eval:       bool,
     #[serde(default)]
@@ -136,19 +136,35 @@ fn default_shell() -> Vec<Shell> {
     vec![Shell::Bash, Shell::Zsh, Shell::Fish, Shell::Powershell]
 }
 
-/// Add escaped quotes `quote` is true, else return owned string.
-fn quote_if(quote: bool, s: &str) -> String {
-    return if quote {
-        format!("{:#?}", s)
-    } else {
-        String::from(s)
-    };
+/// Quote `s` if `quote` is true or if there are spaces
+fn quote_if<'a, S>(s: S, quote: Option<bool>) -> Cow<'a, str>
+where
+    S: Into<Cow<'a, str>>,
+{
+    let do_quote = |x| Cow::Owned(format!("{:#?}", x));
+    let s = s.into();
+    match quote {
+        Some(false) => s,
+        Some(true) => do_quote(s),
+        None => {
+            if s.find(char::is_whitespace).is_some() {
+                return do_quote(s);
+            }
+            s
+        }
+    }
 }
 
 impl Display for Var<'_> {
     /// Display based on POSIX format
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let val = quote_if(self.quote, &self.val);
+        let val = if self.eval {
+            let cmd: Vec<&str> = self.val.as_ref().split_whitespace().collect();
+            let out = exec(&cmd).unwrap().stdout;
+            Cow::from(str::from_utf8(&out).unwrap())
+        } else {
+            quote_if(self.val.as_ref(), self.quote)
+        };
         write!(
             f,
             "{}",
@@ -161,26 +177,10 @@ impl Display for Var<'_> {
     }
 }
 
-impl Debug for Var<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "{}{}\n{:?}",
-            if let Some(d) = &self.desc {
-                format!("# {}\n", d)
-            } else {
-                String::new()
-            },
-            self,
-            self.shell,
-        )
-    }
-}
-
 impl Var<'_> {
     /// Output in fish format
     fn to_fish_fmt(&self) -> String {
-        let val = quote_if(self.quote, &self.val);
+        let val = quote_if(self.val.as_ref(), self.quote);
         lazy_format!(match (self.var_type) {
             VarType::Alias => (
                 "function {k}; {} $argv; end; funcsave {k}",
@@ -192,7 +192,7 @@ impl Var<'_> {
                 self.args.unwrap_or_default(),
                 val
             ),
-            VarType::Env => ("set -gx {} {}", self.key, self.val),
+            VarType::Env => ("set -gx {} {}", self.key, val),
             VarType::Abbr => ("abbr -g {} {}", self.key, val),
         })
         .to_string()
@@ -200,11 +200,12 @@ impl Var<'_> {
 
     /// Output in powershell format
     fn to_powershell_fmt(&self) -> String {
-        match self.var_type {
-            VarType::Alias | VarType::Abbr => format!("function {} {{ {} }}", self.key, self.val),
-            VarType::Path => format!("$Env:Path = {:?}", format!("{}:$Env:Path", self.val)),
-            VarType::Env => format!("$Env:{} = {:?}", self.key, self.val),
-        }
+        lazy_format!(match (self.var_type) {
+            VarType::Alias | VarType::Abbr => ("function {} {{ {} }}", self.key, self.val),
+            VarType::Path => ("$Env:Path = {:?}", format!("{}:$Env:Path", self.val)),
+            VarType::Env => ("$Env:{} = {:?}", self.key, self.val),
+        })
+        .to_string()
     }
 
     /// Output in bash/zsh format
@@ -214,9 +215,9 @@ impl Var<'_> {
 }
 
 /// Read file into string
-fn file_to_string<P: Into<PathBuf>>(path: P) -> Result<String>
+fn file_to_string<P>(path: P) -> Result<String>
 where
-    P: Debug + Copy,
+    P: Into<PathBuf> + Debug + Copy,
 {
     let mut buf = String::new();
     OpenOptions::new()
@@ -225,6 +226,28 @@ where
         .with_context(|| format!("Could not find file {:?}", &path))?
         .read_to_string(&mut buf)?;
     Ok(buf)
+}
+
+/// Spawn subprocess for `cmd` and access stdout/stderr
+/// Fails if process output != 0
+fn exec(cmd: &[&str]) -> Result<Output> {
+    let command = Command::new(&cmd[0])
+        .args(cmd.get(1..).expect("missing args in cmd"))
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let result = command.wait_with_output()?;
+
+    if !result.status.success() {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            str::from_utf8(&result.stderr)
+                .unwrap_or("cmd returned non-zero status")
+                .trim_end(),
+        ))
+        .with_context(|| format!("Command {:?}", cmd));
+    }
+    Ok(result)
 }
 
 fn main() -> Result<()> {
