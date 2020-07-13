@@ -5,12 +5,19 @@ authors = ["Nick Murphy <comfortablynick@gmail.com>"]
 description = "Parses toml file of configuration into shell environment files"
 edition = "2018"
 
+[dev-dependencies]
+criterion = "0.3"
+
 [dependencies]
-toml = "0.5.1"
-serde = { version = "1.0.98", features = ["derive"] }
+toml = "0.5.6"
+serde = { version = "1.0.114", features = ["derive"] }
 clap = "3.0.0-beta.1"
 env_logger = "0.7"
 log = "0.4.8"
 anyhow = "1.0.31"
 chrono = "0.4"
 lazy_format = "1.7.4"
+
+[[bench]]
+name = "bench"
+harness = false

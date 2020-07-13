@@ -1,4 +1,4 @@
-use crate::Shell;
+use crate::shell::Shell;
 use clap::Clap;
 use std::path::PathBuf;
 
