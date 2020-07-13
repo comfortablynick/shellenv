@@ -21,13 +21,13 @@ use std::{
     env,
     fmt::{self, Debug, Display},
     fs::OpenOptions,
-    io::{self, Read, Write},
-    path::PathBuf,
+    io::{self, Read},
+    path::{Path, PathBuf},
     process::{Command, Output, Stdio},
     str::{self, FromStr},
 };
 
-#[derive(Clap, Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Clap, Debug, Clone, Deserialize, PartialEq, Eq, Copy)]
 #[serde(rename_all = "snake_case")]
 pub enum Shell {
     #[clap(alias = "sh")]
@@ -63,15 +63,18 @@ impl Default for Shell {
 }
 
 impl FromStr for Shell {
-    type Err = std::io::Error;
+    type Err = io::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, io::Error> {
         match s {
             "bash" | "sh" => Ok(Self::Bash),
             "zsh" => Ok(Self::Zsh),
             "fish" => Ok(Self::Fish),
             "pwsh" | "ps" | "powershell" => Ok(Self::Powershell),
-            _ => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Cannot convert {:?} to Shell", s),
+            )),
         }
     }
 }
@@ -113,7 +116,13 @@ struct Config<'a> {
     alias: Vec<Var<'a>>,
 }
 
-impl Config<'_> {
+impl<'a> Config<'a> {
+    /// Create `Config` from toml
+    fn from_toml(toml: &'a str) -> Result<Self> {
+        let toml = toml.into();
+        toml::from_str(toml).with_context(|| "Error converting str to toml")
+    }
+
     /// Get count of all vecs in the struct
     fn item_ct(&self) -> usize {
         &self.path.len() + &self.env.len() + &self.abbr.len() + &self.alias.len()
@@ -220,13 +229,13 @@ impl Var<'_> {
 /// Read file into string
 fn file_to_string<P>(path: P) -> Result<String>
 where
-    P: Into<PathBuf> + Debug + Copy,
+    P: AsRef<Path>,
 {
     let mut buf = String::new();
     OpenOptions::new()
         .read(true)
-        .open(&path.into())
-        .with_context(|| format!("Could not find file {:?}", &path))?
+        .open(&path)
+        .with_context(|| format!("Could not find file {:?}", path.as_ref().display()))?
         .read_to_string(&mut buf)?;
     Ok(buf)
 }
@@ -258,11 +267,7 @@ where
     Ok(result)
 }
 
-fn shell_eval<'a, S>(cmd_str: S) -> Result<Cow<'a, str>>
-where
-    S: Into<Cow<'a, str>>,
-{
-    let cmd_str = cmd_str.into();
+fn shell_eval<'a, S: AsRef<str>>(cmd_str: S) -> Result<Cow<'a, str>> {
     let mut shell_cmd = Vec::from(os::SHELL);
     shell_cmd.push(cmd_str.as_ref());
     let result = exec(shell_cmd)?;
@@ -270,13 +275,11 @@ where
     Ok(Cow::from(out))
 }
 
-/// Parse toml file and output shell rc file
-fn main() -> Result<()> {
-    let cli = cli::Cli::parse();
-    logger::init_logger(cli.verbosity);
-
-    let file = file_to_string(&cli.toml_file)?;
-    let vals: Config = toml::from_str(&file)?;
+fn parse_config<W>(toml_str: &str, shell: &Shell, writer: &mut W) -> Result<()>
+where
+    W: io::Write,
+{
+    let vals = Config::from_toml(&toml_str)?;
     let mut vars: Vec<Var> = Vec::with_capacity(vals.item_ct());
 
     for mut v in vals.path {
@@ -296,27 +299,59 @@ fn main() -> Result<()> {
         vars.push(v);
     }
 
-    let mut buf = String::with_capacity(8000);
     for var in &vars {
         if let Some(sh) = var.shell.clone() {
             // If a value for var.shell has been supplied, make sure
             // it includes the shell we're evaluating for
             // `None` assumes compatibility with any shell
-            if !sh.contains(&cli.shell) {
+            if !sh.contains(shell) {
                 debug!("Skipping {:?}", var);
                 continue;
             }
         }
-        match &cli.shell {
-            Shell::Fish => buf.push_str(&var.to_fish_fmt().replace("$(", "(")),
-            Shell::Powershell => buf.push_str(&var.to_powershell_fmt()),
-            _ => buf.push_str(&var.to_posix_fmt()),
+        match shell {
+            Shell::Fish => writeln!(writer, "{}", &var.to_fish_fmt().replace("$(", "("))?,
+            Shell::Powershell => writeln!(writer, "{}", &var.to_powershell_fmt())?,
+            _ => writeln!(writer, "{}", &var.to_posix_fmt())?,
         }
-        buf.push('\n');
     }
-    io::stdout().write_all(buf.as_bytes())?;
+    Ok(())
+}
+
+/// Parse toml file and output shell rc file
+fn main() -> Result<()> {
+    let cli = cli::Cli::parse();
+    logger::init_logger(cli.verbosity);
+
+    let file = file_to_string(&cli.toml_file)?;
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
+    let vars = parse_config(&file, &cli.shell, &mut writer)?;
 
     info!("{:#?}", cli);
     trace!("{:#?}", vars);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    type Result = anyhow::Result<()>;
+
+    #[test]
+    fn simple_env_var() -> Result {
+        const TOML: &str = r#"
+        [[env]]
+        key = 'LANG'
+        val = 'en_US.utf8'
+        cat = 'system'
+        desc = 'Locale setting'
+        shell = ['bash']
+            "#;
+        let mut buf = Vec::new();
+        let _ = parse_config(&TOML, &Shell::Bash, &mut buf)?;
+        let output = String::from_utf8(buf)?;
+        assert_eq!(output, "export LANG=en_US.utf8\n");
+        Ok(())
+    }
 }

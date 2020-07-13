@@ -32,20 +32,28 @@ rb +args='':
     ./target/release/{{bin_name}} {{args}}
 
 # run for (ba)sh
-runsh:
-    cargo run --release -- -s sh
+runsh +args='':
+    cargo run --release -- -s sh {{args}}
+
+# run for zsh
+runzsh +args='':
+    cargo run --release -- -s zsh {{args}}
 
 # run for powershell
-runps:
-    cargo run --release -- -s ps
+runps +args='':
+    cargo run --release -- -s ps {{args}}
 
 # run for fish
-runfish:
-    cargo run --release -- -s fish
+runfish +args='':
+    cargo run --release -- -s fish {{args}}
 
 # run for (ba)sh & output to bat
 runshc:
     cargo run --release -- -s sh | bat -l sh
+
+# run for zsh & output to bat
+runzshc:
+    cargo run --release -- -s zsh | bat -l zsh
 
 # run for powershell & output to bat
 runpsc:
