@@ -1,70 +1,71 @@
-/** Format output of env_logger buffer */
-use chrono::Local;
-use env_logger::{fmt::Color, Env};
-use log::{self, Level};
-use std::io::Write;
+// From: ripgrep
+// This module defines a super simple logger that works with the `log` crate.
+// We don't need anything fancy; just basic log levels and the ability to
+// print to stderr. We therefore avoid bringing in extra dependencies just
+// for this functionality.
 
-// Colors
-const DIM_CYAN: u8 = 37;
-const DIM_GREEN: u8 = 34;
-const DIM_YELLOW: u8 = 142;
-const DIM_ORANGE: u8 = 130;
-const DIM_MAGENTA: u8 = 127;
+use log::{self, Log};
 
-/// Initialize customized instance of env_logger
-pub fn init_logger(verbose: u8) {
-    env_logger::Builder::from_env(Env::new().default_filter_or(match verbose {
-        0 => "warn",
-        1 => "info",
-        2 => "debug",
-        _ => "trace",
-    }))
-    .format(|buf, record| {
-        let mut level_style = buf.style();
-        match record.level() {
-            Level::Trace => level_style.set_color(Color::Ansi256(DIM_YELLOW)),
-            Level::Debug => level_style.set_color(Color::Ansi256(DIM_CYAN)),
-            Level::Info => level_style.set_color(Color::Ansi256(DIM_GREEN)),
-            Level::Warn => level_style.set_color(Color::Ansi256(DIM_ORANGE)),
-            Level::Error => level_style.set_color(Color::Ansi256(DIM_MAGENTA)),
+/// The simplest possible logger that logs to stderr.
+///
+/// This logger does no filtering. Instead, it relies on the `log` crate's
+/// filtering via its global max_level setting.
+#[derive(Debug)]
+pub struct Logger(());
+
+const LOGGER: &Logger = &Logger(());
+
+impl Logger {
+    /// Create a new logger that logs to stderr and initialize it as the
+    /// global logger. If there was a problem setting the logger, then an
+    /// error is returned.
+    pub fn init(verbose: u8) -> Result<(), log::SetLoggerError> {
+        let level = match verbose {
+            0 => log::Level::Warn,
+            1 => log::Level::Info,
+            2 => log::Level::Debug,
+            _ => log::Level::Trace,
         };
+        log::set_max_level(level.to_level_filter());
+        log::set_logger(LOGGER)
+    }
+}
 
-        let level = level_style.value(format!("{:5}", record.level()));
-        let tm_fmt = "%F %H:%M:%S%.3f";
-        let time = Local::now().format(tm_fmt);
+impl Log for Logger {
+    fn enabled(&self, _: &log::Metadata) -> bool {
+        // We set the log level via log::set_max_level, so we don't need to
+        // implement filtering here.
+        true
+    }
 
-        let mut dim_white_style = buf.style();
-        dim_white_style.set_color(Color::White);
+    fn log(&self, record: &log::Record) {
+        match (record.file(), record.line()) {
+            (Some(file), Some(line)) => {
+                eprintln!(
+                    "{}|{}|{}:{}: {}",
+                    record.level(),
+                    record.target(),
+                    file,
+                    line,
+                    record.args()
+                );
+            }
+            (Some(file), None) => {
+                eprintln!(
+                    "{}|{}|{}: {}",
+                    record.level(),
+                    record.target(),
+                    file,
+                    record.args()
+                );
+            }
+            _ => {
+                eprintln!("{}|{}: {}", record.level(), record.target(), record.args());
+            }
+        }
+    }
 
-        let mut subtle_style = buf.style();
-        subtle_style.set_color(Color::Black).set_intense(true);
-
-        let mut gray_style = buf.style();
-        gray_style.set_color(Color::Ansi256(250));
-
-        writeln!(
-            buf,
-            "\
-             {lbracket}\
-             {time}\
-             {rbracket}\
-             {level}\
-             {lbracket}\
-             {file}\
-             {colon}\
-             {line_no}\
-             {rbracket} \
-             {record_args}\
-             ",
-            lbracket = subtle_style.value("["),
-            rbracket = subtle_style.value("]"),
-            colon = subtle_style.value(":"),
-            file = gray_style.value(record.file().unwrap_or("<unnamed>")),
-            time = gray_style.value(time),
-            level = level,
-            line_no = gray_style.value(record.line().unwrap_or(0)),
-            record_args = &record.args(),
-        )
-    })
-    .init();
+    fn flush(&self) {
+        // We use eprintln! which is flushed on every call.
+    }
 }
