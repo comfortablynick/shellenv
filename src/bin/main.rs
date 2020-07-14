@@ -1,9 +1,12 @@
 use clap::Clap;
 use log::{info, trace};
-use shellenv::{config::parse_config, logger, shell::Shell, util::file_to_string};
+use shellenv::{
+    config::parse_config,
+    logger,
+    shell::Shell,
+    util::{file_to_string, Result},
+};
 use std::{io, path::PathBuf};
-
-type Result = anyhow::Result<()>;
 
 #[derive(Clap, Debug, PartialEq, Default)]
 #[clap(author, about, version, max_term_width = 80)]
@@ -24,12 +27,26 @@ pub struct Cli {
     pub verbosity: u8,
 }
 
+/// Parse toml file and output shell rc file
+fn main() -> Result {
+    let cli = Cli::parse();
+    logger::init_logger(cli.verbosity);
+
+    let file = file_to_string(&cli.toml_file)?;
+    let stdout = io::stdout();
+    let mut writer = stdout.lock();
+    let vars = parse_config(&file, &cli.shell, &mut writer)?;
+
+    info!("{:#?}", cli);
+    trace!("{:#?}", vars);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shellenv::shell::Shell;
     use std::process::{Command, Stdio};
-
-    type Result = anyhow::Result<()>;
 
     const TEST_TOML: &str = "~/test.toml";
 
@@ -62,27 +79,6 @@ mod tests {
         assert!(!result.status.success());
         Ok(())
     }
-}
-
-/// Parse toml file and output shell rc file
-fn main() -> Result {
-    let cli = Cli::parse();
-    logger::init_logger(cli.verbosity);
-
-    let file = file_to_string(&cli.toml_file)?;
-    let stdout = io::stdout();
-    let mut writer = stdout.lock();
-    let vars = parse_config(&file, &cli.shell, &mut writer)?;
-
-    info!("{:#?}", cli);
-    trace!("{:#?}", vars);
-    Ok(())
-}
-
-#[cfg(test)]
-mod clitests {
-    use super::*;
-    use shellenv::shell::Shell;
 
     #[test]
     fn simple_env_var() -> Result {

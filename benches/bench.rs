@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use shellenv::file_to_string;
-type Result = anyhow::Result<()>;
+use shellenv::{config::parse_config, shell::Shell, util::Result};
 
 fn fibonacci(n: u64) -> u64 {
     match n {

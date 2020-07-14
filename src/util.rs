@@ -1,5 +1,4 @@
-use crate::os;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context};
 use log::{debug, warn};
 use std::{
     borrow::Cow,
@@ -9,6 +8,8 @@ use std::{
     process::{Command, Output, Stdio},
     str,
 };
+
+pub type Result<T = ()> = anyhow::Result<T>;
 
 /// Read file into string
 pub fn file_to_string<P>(path: P) -> Result<String>
@@ -55,7 +56,12 @@ where
 
 /// Evaluate `cmd_str` in default os shell
 pub fn shell_eval<'a, S: AsRef<str>>(cmd_str: S) -> Result<Cow<'a, str>> {
-    let mut shell_cmd = Vec::from(os::SHELL);
+    #[cfg(unix)]
+    const SHELL: [&str; 2] = ["sh", "-c"];
+    #[cfg(windows)]
+    const SHELL: [&str; 2] = ["cmd.exe", "/c"];
+
+    let mut shell_cmd = Vec::from(SHELL);
     shell_cmd.push(cmd_str.as_ref());
     let result = exec(shell_cmd)?;
     let out = str::from_utf8(&result.stdout)?.trim_end().to_string();
@@ -81,3 +87,20 @@ where
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quote_spaces() {
+        assert_eq!(quote_if("test string", None), "\"test string\"");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn eval_which_ls() -> Result {
+        let cmd = shell_eval("which ls")?;
+        assert_eq!(cmd, "/usr/bin/ls");
+        Ok(())
+    }
+}

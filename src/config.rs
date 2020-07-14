@@ -1,8 +1,9 @@
 use crate::{
     shell::Shell,
+    util::Result,
     var::{Var, VarType},
 };
-use anyhow::{Context, Result};
+use anyhow::Context;
 use log::debug;
 use serde::Deserialize;
 use std::io;
@@ -78,4 +79,3 @@ where
     }
     Ok(())
 }
-
