@@ -1,4 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use shellenv::file_to_string;
 type Result = anyhow::Result<()>;
 
 fn fibonacci(n: u64) -> u64 {

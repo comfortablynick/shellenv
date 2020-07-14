@@ -1,5 +1,5 @@
 ; vim:set fenc=utf-8 ft=dosini:
-; written with just2tasks: Wed Jul  8 08:23:11 2020
+; written with just2tasks: Mon Jul 13 21:29:10 2020
 
 [build]
 command=just build
@@ -69,6 +69,18 @@ save=1
 
 [runshc]
 command=just runshc
+cwd=<root>
+output=terminal
+save=1
+
+[runzsh]
+command=just runzsh
+cwd=<root>
+output=terminal
+save=1
+
+[runzshc]
+command=just runzshc
 cwd=<root>
 output=terminal
 save=1
