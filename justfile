@@ -68,3 +68,6 @@ test:
 
 fix:
     cargo fix
+
+bench:
+    cargo bench

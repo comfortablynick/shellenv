@@ -1,17 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use shellenv::{config::parse_config, shell::Shell, util::Result};
-
-fn fibonacci(n: u64) -> u64 {
-    match n {
-        0 => 1,
-        1 => 1,
-        n => fibonacci(n - 1) + fibonacci(n - 2),
-    }
-}
-
-fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("fib 20", |b| b.iter(|| fibonacci(black_box(20))));
-}
 
 fn simple_env_var() -> Result {
     const TOML: &str = r#"
@@ -29,5 +17,9 @@ fn simple_env_var() -> Result {
     Ok(())
 }
 
-criterion_group!(benches, criterion_benchmark);
+fn bench_toml(c: &mut Criterion) {
+    c.bench_function("simple_env_var", |b| b.iter(|| simple_env_var()));
+}
+
+criterion_group!(benches, bench_toml);
 criterion_main!(benches);

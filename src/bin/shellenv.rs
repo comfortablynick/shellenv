@@ -47,7 +47,6 @@ fn main() -> Result {
 mod tests {
     use super::*;
     use shellenv::shell::Shell;
-    use std::process::{Command, Stdio};
 
     const TEST_TOML: &str = "~/test.toml";
 
@@ -66,35 +65,5 @@ mod tests {
         cli.toml_file = PathBuf::from(TEST_TOML);
         cli.shell = Shell::Fish;
         assert_eq!(cli, Cli::parse_from(&["", TEST_TOML, "-s", "fish"]))
-    }
-
-    #[test]
-    fn missing_toml_file() -> Result {
-        let cmd = Command::new("shellenv")
-            .arg("/tmp/noexist")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-
-        let result = cmd.wait_with_output()?;
-        assert!(!result.status.success());
-        Ok(())
-    }
-
-    #[test]
-    fn simple_env_var() -> Result {
-        const TOML: &str = r#"
-        [[env]]
-        key = 'LANG'
-        val = 'en_US.utf8'
-        cat = 'system'
-        desc = 'Locale setting'
-        shell = ['bash']
-            "#;
-        let mut buf = Vec::new();
-        let _ = parse_config(&TOML, &Shell::Bash, &mut buf)?;
-        let output = String::from_utf8(buf)?;
-        assert_eq!(output, "export LANG=en_US.utf8\n");
-        Ok(())
     }
 }
