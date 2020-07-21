@@ -1,0 +1,11 @@
+{
+ "port": 40000,
+ "serve": "target/doc",
+ "serveRedirect": false,
+ "watchexps": [
+    "../../**/*.rs # just doc"
+ ],
+ "http2": false,
+ "open": false
+}
+// vim:ft=jsonc:

@@ -1,15 +1,18 @@
-// From: ripgrep
-// This module defines a super simple logger that works with the `log` crate.
-// We don't need anything fancy; just basic log levels and the ability to
-// print to stderr. We therefore avoid bringing in extra dependencies just
-// for this functionality.
+//! Print log messages to stderr
+//!
+//! Originally from: [ripgrep](https://github.com/BurntSushi/ripgrep)
+//!
+//! This module defines a super simple logger that works with the `log` crate.
+//! We don't need anything fancy; just basic log levels and the ability to
+//! print to stderr. We therefore avoid bringing in extra dependencies just
+//! for this functionality.
 
 use log::{self, Log};
 
 /// The simplest possible logger that logs to stderr.
 ///
 /// This logger does no filtering. Instead, it relies on the `log` crate's
-/// filtering via its global max_level setting.
+/// filtering via its global `max_level` setting.
 #[derive(Debug)]
 pub struct Logger(());
 

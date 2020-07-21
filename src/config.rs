@@ -1,3 +1,5 @@
+//! Read shell environment from TOML file.
+
 use crate::{
     shell::Shell,
     util::Result,

@@ -4,11 +4,15 @@ version = "0.1.0"
 authors = ["Nick Murphy <comfortablynick@gmail.com>"]
 description = "Parses toml file of configuration into shell environment files"
 edition = "2018"
+publish = false
+autobins = false
 
-[dev-dependencies]
-criterion = "0.3"
-assert_cmd = "1.0.1"
-predicates = "1.0.4"
+[lib]
+doctest = false
+
+[[bin]]
+name = "shellenv"
+path = "src/bin/main.rs"
 
 [dependencies]
 toml = "0.5.6"
@@ -17,6 +21,14 @@ clap = "3.0.0-beta.1"
 log = "0.4.8"
 anyhow = "1.0.31"
 lazy_format = "1.7.4"
+shell-escape = "0.1.5"
+
+# [dev-dependencies]
+# Leave commented so dev dependencies show in docs
+criterion = "0.3"
+assert_cmd = "1.0.1"
+predicates = "1.0.4"
+
 
 [[bench]]
 name = "bench"
