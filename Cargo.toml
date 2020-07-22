@@ -21,7 +21,6 @@ clap = "3.0.0-beta.1"
 log = "0.4.8"
 anyhow = "1.0.31"
 lazy_format = "1.7.4"
-shell-escape = "0.1.5"
 
 # [dev-dependencies]
 # Leave commented so dev dependencies show in docs

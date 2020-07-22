@@ -1,0 +1,5 @@
+# Test appending to PATH
+[[path]]
+val = '$HOME/bin'
+args = '-gp --path'
+desc = 'User bin dir for scripts (tracked on git)'

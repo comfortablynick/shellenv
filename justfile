@@ -24,15 +24,16 @@ install:
 doc:
     cargo doc --release
 
+# rebuild docs and start simple static server
+docs +PORT='40000':
+    cargo doc --release && http target/doc -p {{PORT}}
+
 # start server for docs and update upon changes
 docslive:
     light-server -c .lightrc
 
-# docslive +PORT='40000':
-#     cargo watch -x 'doc --release --color=always' -s 'live-server target/doc --no-browser --port={{PORT}}'
-
-# rebuild docs and start simple static server
-docs +PORT='40000':
+# rebuild docs and start simple static server that watches for changes
+docw +PORT='40000':
     cargo watch -x 'doc --release' -s 'http target/doc -p {{PORT}}'
 
 # build release binary and run

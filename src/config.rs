@@ -1,4 +1,4 @@
-//! Read shell environment from TOML file.
+//! Read shell environment from toml file.
 
 use crate::{
     shell::Shell,
@@ -10,6 +10,7 @@ use log::debug;
 use serde::Deserialize;
 use std::io;
 
+/// Holds data parsed from toml file
 #[derive(Deserialize, Debug)]
 pub struct Config<'a> {
     #[serde(borrow, default)]

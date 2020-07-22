@@ -68,19 +68,24 @@ pub fn shell_eval<'a, S: AsRef<str>>(cmd_str: S) -> Result<Cow<'a, str>> {
     Ok(Cow::from(out))
 }
 
+/// Perform quoting
+fn wrap_in_quotes<'a, S: Into<Cow<'a, str>>>(s: S) -> Cow<'a, str> {
+    let s = s.into();
+    Cow::Owned(format!("{:#?}", s))
+}
+
 /// Quote `s` if `quote` is true or if there is whitespace in `s`
 pub fn quote_if<'a, S>(s: S, quote: Option<bool>) -> Cow<'a, str>
 where
     S: Into<Cow<'a, str>>,
 {
-    let do_quote = |x| Cow::Owned(format!("{:#?}", x));
     let s = s.into();
     match quote {
         Some(false) => s,
-        Some(true) => do_quote(s),
+        Some(true) => wrap_in_quotes(s),
         None => {
             if s.find(char::is_whitespace).is_some() {
-                return do_quote(s);
+                return wrap_in_quotes(s);
             }
             s
         }
