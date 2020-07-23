@@ -1,3 +1,4 @@
+//! Enumerate shells and shell behavior
 use clap::Clap;
 use serde::Deserialize;
 use std::{
