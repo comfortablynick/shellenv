@@ -27,7 +27,7 @@ impl<'a> Config<'a> {
     /// Create `Config` from toml
     fn from_toml(toml: &'a str) -> Result<Self> {
         let toml = toml.into();
-        toml::from_str(toml).with_context(|| "Error converting str to toml")
+        toml::from_str(toml).context("Error converting str to toml")
     }
 
     /// Get count of all vecs in the struct

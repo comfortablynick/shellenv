@@ -1,9 +1,9 @@
-use anyhow::anyhow;
+mod logger;
 use clap::Clap;
 use log::{info, trace};
+use logger::init_logger;
 use shellenv::{
     config::parse_config,
-    logger::Logger,
     shell::Shell,
     util::{file_to_string, Result},
 };
@@ -31,7 +31,8 @@ pub struct Cli {
 /// Parse toml file and output shell rc file
 fn main() -> Result {
     let cli = Cli::parse();
-    Logger::init(cli.verbosity).map_err(|e| anyhow!(e))?;
+    // Logger::init(cli.verbosity).map_err(|e| anyhow!(e))?;
+    init_logger(cli.verbosity);
 
     let file = file_to_string(&cli.toml_file)?;
     let stdout = io::stdout();

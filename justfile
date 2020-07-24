@@ -42,6 +42,19 @@ help:
 rb +args='':
     ./target/debug/{{bin_name}} {{args}}
 
+runc:
+    #!/usr/bin/env bash
+    shell=$(basename $SHELL)
+    cargo run -- -s $shell | bat -l $shell
+
+# run with -v
+runv:
+    cargo run -- -v
+
+# run with -vv
+runvv:
+    cargo run -- -vv
+
 # run for (ba)sh
 runsh +args='':
     cargo run -- -s sh {{args}}

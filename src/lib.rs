@@ -22,7 +22,6 @@
 //!   - Preferred over aliases which are simple function wrappers in fish
 
 pub mod config;
-pub mod logger;
 pub mod shell;
 pub mod util;
 pub mod var;

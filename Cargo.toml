@@ -19,15 +19,13 @@ toml = "0.5.6"
 serde = { version = "1.0.114", features = ["derive"] }
 clap = "3.0.0-beta.1"
 log = "0.4.8"
+env_logger = "0.7.1"
 anyhow = "1.0.31"
 lazy_format = "1.7.4"
 
 # [dev-dependencies]
 # Leave commented so dev dependencies show in docs
 criterion = "0.3"
-assert_cmd = "1.0.1"
-predicates = "1.0.4"
-
 
 [[bench]]
 name = "bench"
