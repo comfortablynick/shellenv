@@ -73,6 +73,9 @@ impl Var<'_> {
         if val.contains("$(") {
             val = val.replace("$(", "(").into();
         }
+        if val.contains("&&") {
+            val = val.replace("&&", "; and").into();
+        }
         lazy_format!(match (self.var_type) {
             VarType::Alias => (
                 "function {k}; {} $argv; end; funcsave {k}",
@@ -80,8 +83,7 @@ impl Var<'_> {
                 k = self.key,
             ),
             VarType::Path => (
-                "set {} fish_user_paths {}",
-                self.args.unwrap_or_default(),
+                "fish_add_path {}",
                 val
             ),
             VarType::Env => ("set -gx {} {}", self.key, val),

@@ -6,6 +6,7 @@ alias r := run
 alias b := build
 alias i := install
 alias h := help
+alias file-run := run
 
 # build release binary
 build:

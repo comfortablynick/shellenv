@@ -1,93 +1,221 @@
 ; vim:set fenc=utf-8 ft=dosini:
-; written with just2tasks: Mon Jul 13 21:29:10 2020
+; written with just2tasks: Fri Mar 26 14:14:30 2021
 
+[bench]
+command=just bench
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+; build release binary
 [build]
 command=just build
 cwd=<root>
 output=terminal
+pos=right
+save=1
+
+; alias for `build`
+[b]
+command=just b
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+; rebuild docs
+[doc]
+command=just doc
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+;  +PORT='40000' # rebuild docs and start simple static server
+[docs]
+command=just docs
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+; start server for docs and update upon changes
+[docslive]
+command=just docslive
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+;  +PORT='40000' # rebuild docs and start simple static server that watches for changes (in parallel)
+[docw]
+command=just docw
+cwd=<root>
+output=terminal
+pos=right
 save=1
 
 [fix]
 command=just fix
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
 [help]
 command=just help
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+; alias for `help`
+[h]
+command=just h
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+; install release binary to $HOME/.cargo/bin
 [install]
 command=just install
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+; alias for `install`
+[i]
+command=just i
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+;  +args=''        # run binary
 [rb]
 command=just rb
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+;  +args=''       # build release binary and run
 [run]
 command=just run
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+;  +args=''  # alias for `run`
+[file-run]
+command=just file-run
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+;  +args=''         # alias for `run`
+[r]
+command=just r
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+[runc]
+command=just runc
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+;  +args=''   # run for fish
 [runfish]
 command=just runfish
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+; run for fish & output to bat
 [runfishc]
 command=just runfishc
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+;  +args=''     # run for powershell
 [runps]
 command=just runps
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+; run for powershell & output to bat
 [runpsc]
 command=just runpsc
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+;  +args=''     # run for (ba)sh
 [runsh]
 command=just runsh
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+; run for (ba)sh & output to bat
 [runshc]
 command=just runshc
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+; run with -v
+[runv]
+command=just runv
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+; run with -vv
+[runvv]
+command=just runvv
+cwd=<root>
+output=terminal
+pos=right
+save=1
+
+;  +args=''    # run for zsh
 [runzsh]
 command=just runzsh
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
+; run for zsh & output to bat
 [runzshc]
 command=just runzshc
 cwd=<root>
 output=terminal
+pos=right
 save=1
 
 [test]
 command=just test
 cwd=<root>
 output=terminal
+pos=right
 save=1
-
